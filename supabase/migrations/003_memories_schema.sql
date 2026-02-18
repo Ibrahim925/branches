@@ -5,7 +5,7 @@
 -- Memories
 -- ==================
 CREATE TABLE public.memories (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   graph_id UUID NOT NULL REFERENCES public.graphs(id) ON DELETE CASCADE,
   node_id UUID REFERENCES public.nodes(id) ON DELETE SET NULL,
   author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -29,7 +29,7 @@ CREATE INDEX idx_memories_date ON public.memories(event_date DESC NULLS LAST);
 -- Memory Comments
 -- ==================
 CREATE TABLE public.memory_comments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   memory_id UUID NOT NULL REFERENCES public.memories(id) ON DELETE CASCADE,
   author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
@@ -42,7 +42,7 @@ CREATE INDEX idx_memory_comments ON public.memory_comments(memory_id, created_at
 -- Memory Likes
 -- ==================
 CREATE TABLE public.memory_likes (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   memory_id UUID NOT NULL REFERENCES public.memories(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now(),

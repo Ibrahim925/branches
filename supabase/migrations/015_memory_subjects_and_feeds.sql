@@ -2,7 +2,7 @@
 -- Tree in product language maps to graph in schema.
 
 CREATE TABLE IF NOT EXISTS public.memory_subjects (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   memory_id UUID NOT NULL REFERENCES public.memories(id) ON DELETE CASCADE,
   subject_user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   tagged_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,

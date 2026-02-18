@@ -5,7 +5,7 @@
 -- Conversations
 -- ==================
 CREATE TABLE public.conversations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   graph_id UUID NOT NULL REFERENCES public.graphs(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('direct', 'group', 'tree')),
   name TEXT, -- null for direct conversations
@@ -19,7 +19,7 @@ CREATE INDEX idx_conversations_graph ON public.conversations(graph_id);
 -- Conversation Participants
 -- ==================
 CREATE TABLE public.conversation_participants (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   joined_at TIMESTAMPTZ DEFAULT now(),
@@ -33,7 +33,7 @@ CREATE INDEX idx_conv_participants_conv ON public.conversation_participants(conv
 -- Messages
 -- ==================
 CREATE TABLE public.messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
   sender_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
@@ -47,7 +47,7 @@ CREATE INDEX idx_messages_sender ON public.messages(sender_id);
 -- Message Reads (for unread tracking)
 -- ==================
 CREATE TABLE public.message_reads (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   last_read_at TIMESTAMPTZ DEFAULT now(),
@@ -58,11 +58,11 @@ CREATE TABLE public.message_reads (
 -- Invites
 -- ==================
 CREATE TABLE public.invites (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   graph_id UUID NOT NULL REFERENCES public.graphs(id) ON DELETE CASCADE,
   invited_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT,
-  token TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
+  token TEXT NOT NULL UNIQUE DEFAULT md5(gen_random_uuid()::text || clock_timestamp()::text || random()::text),
   role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'editor', 'viewer')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired')),
   claimed_by UUID REFERENCES auth.users(id),
