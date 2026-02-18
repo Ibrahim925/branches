@@ -124,6 +124,10 @@ export function NodeDetailSidebar({
   const [memoryPreviews, setMemoryPreviews] = useState<MemoryPreviewRecord[]>([]);
   const [loadingMemoryPreviews, setLoadingMemoryPreviews] = useState(false);
   const [memoryPreviewError, setMemoryPreviewError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [hasClaimedNodeInGraph, setHasClaimedNodeInGraph] = useState(false);
+  const [loadingClaimStatus, setLoadingClaimStatus] = useState(true);
+  const [claimingNode, setClaimingNode] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
   const formatProfileName = useCallback(
@@ -349,6 +353,33 @@ export function NodeDetailSidebar({
     setLinkingCandidateId(null);
   }, []);
 
+  const loadClaimStatus = useCallback(async () => {
+    setLoadingClaimStatus(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setCurrentUserId(null);
+      setHasClaimedNodeInGraph(false);
+      setLoadingClaimStatus(false);
+      return;
+    }
+
+    setCurrentUserId(user.id);
+
+    const { data: claimedRows } = await supabase
+      .from('nodes')
+      .select('id')
+      .eq('graph_id', graphId)
+      .eq('claimed_by', user.id)
+      .limit(1);
+
+    setHasClaimedNodeInGraph(Boolean((claimedRows || []).length));
+    setLoadingClaimStatus(false);
+  }, [graphId, supabase]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadNode();
@@ -359,6 +390,11 @@ export function NodeDetailSidebar({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadMemoryPreviews(node.claimed_by);
   }, [loadMemoryPreviews, node]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadClaimStatus();
+  }, [loadClaimStatus]);
 
   function handleAvatarFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -459,6 +495,31 @@ export function NodeDetailSidebar({
 
     setDeleting(false);
     onClose();
+    onUpdate?.();
+  }
+
+  async function handleClaimNode() {
+    if (!node || claimingNode || node.claimed_by) return;
+
+    setClaimingNode(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    const { error } = await supabase.rpc('claim_tree_node', {
+      _graph_id: graphId,
+      _node_id: node.id,
+    });
+
+    if (error) {
+      setActionError(error.message || 'Could not claim this family member.');
+      setClaimingNode(false);
+      return;
+    }
+
+    setActionNotice('This profile is now linked to your account.');
+    setHasClaimedNodeInGraph(true);
+    setClaimingNode(false);
+    void loadNode();
     onUpdate?.();
   }
 
@@ -674,6 +735,12 @@ export function NodeDetailSidebar({
       : linkMode === 'child'
         ? 'Child'
         : 'Spouse';
+  const canClaimThisNode =
+    Boolean(node) &&
+    !node?.claimed_by &&
+    Boolean(currentUserId) &&
+    !hasClaimedNodeInGraph &&
+    !loadingClaimStatus;
 
   if (!node) {
     return (
@@ -1055,6 +1122,31 @@ export function NodeDetailSidebar({
                   Edit Details
                 </button>
               )}
+
+              {canClaimThisNode && (
+                <button
+                  type="button"
+                  onClick={() => void handleClaimNode()}
+                  disabled={claimingNode}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-moss/10 border border-moss/35 text-earth text-sm hover:bg-moss/15 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {claimingNode ? (
+                    <Loader2 className="w-4 h-4 text-moss animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 text-moss" />
+                  )}
+                  {claimingNode ? 'Claiming…' : 'Claim This Profile'}
+                </button>
+              )}
+
+              {!node.claimed_by &&
+              !loadingClaimStatus &&
+              Boolean(currentUserId) &&
+              hasClaimedNodeInGraph ? (
+                <p className="px-1 text-xs text-bark/55">
+                  You already have a claimed profile in this tree.
+                </p>
+              ) : null}
 
               <button
                 type="button"
