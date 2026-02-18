@@ -58,7 +58,10 @@ export async function updateSession(request: NextRequest) {
             .eq('id', user.id)
             .maybeSingle();
 
-        const onboardingCompleted = Boolean(profileRow?.onboarding_completed);
+        const hasProfile = Boolean(profileRow);
+        const onboardingCompleted = hasProfile
+            ? Boolean(profileRow?.onboarding_completed)
+            : true;
         const safeNext = (() => {
             const nextPath = request.nextUrl.searchParams.get('next');
             if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
@@ -75,6 +78,13 @@ export async function updateSession(request: NextRequest) {
             pathname.startsWith('/dashboard') ||
             pathname.startsWith('/profile') ||
             isGraphRoute;
+
+        if (!hasProfile && isOnboardingRoute) {
+            const url = request.nextUrl.clone();
+            url.pathname = safeNext;
+            url.search = '';
+            return NextResponse.redirect(url);
+        }
 
         if (!onboardingCompleted && isAppRoute && !isOnboardingRoute) {
             const url = request.nextUrl.clone();

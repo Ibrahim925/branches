@@ -40,10 +40,10 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
       'id,email,first_name,last_name,display_name,avatar_url,gender,bio,birthdate,onboarding_completed'
     )
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
   if (!profileRow) {
-    redirect('/dashboard');
+    redirect(nextPath);
   }
 
   if ((profileRow as EditableProfile).onboarding_completed) {
