@@ -49,6 +49,7 @@ interface ClaimedProfileData {
 }
 
 type ExistingRelationshipKind = 'parent' | 'child' | 'spouse';
+type GraphMembershipRole = 'admin' | 'editor' | 'viewer';
 
 interface CandidateNodeData {
   id: string;
@@ -125,6 +126,7 @@ export function NodeDetailSidebar({
   const [loadingMemoryPreviews, setLoadingMemoryPreviews] = useState(false);
   const [memoryPreviewError, setMemoryPreviewError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentGraphRole, setCurrentGraphRole] = useState<GraphMembershipRole | null>(null);
   const [hasClaimedNodeInGraph, setHasClaimedNodeInGraph] = useState(false);
   const [loadingClaimStatus, setLoadingClaimStatus] = useState(true);
   const [claimingNode, setClaimingNode] = useState(false);
@@ -362,12 +364,22 @@ export function NodeDetailSidebar({
 
     if (!user) {
       setCurrentUserId(null);
+      setCurrentGraphRole(null);
       setHasClaimedNodeInGraph(false);
       setLoadingClaimStatus(false);
       return;
     }
 
     setCurrentUserId(user.id);
+
+    const { data: membershipRow } = await supabase
+      .from('user_graph_memberships')
+      .select('role')
+      .eq('graph_id', graphId)
+      .eq('profile_id', user.id)
+      .maybeSingle();
+
+    setCurrentGraphRole((membershipRow?.role as GraphMembershipRole | undefined) || null);
 
     const { data: claimedRows } = await supabase
       .from('nodes')
@@ -735,6 +747,8 @@ export function NodeDetailSidebar({
       : linkMode === 'child'
         ? 'Child'
         : 'Spouse';
+  const canLinkExistingRelationships =
+    currentGraphRole === 'admin' || currentGraphRole === 'editor';
   const canClaimThisNode =
     Boolean(node) &&
     !node?.claimed_by &&
@@ -1148,42 +1162,46 @@ export function NodeDetailSidebar({
                 </p>
               ) : null}
 
-              <button
-                type="button"
-                onClick={() => openLinkPicker('parent')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-earth text-sm ${
-                  linkMode === 'parent' ? 'bg-moss/10 border border-moss/30' : 'hover:bg-stone/30'
-                }`}
-              >
-                <Users className="w-4 h-4 text-moss" />
-                Link Existing Parent
-              </button>
+              {canLinkExistingRelationships ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openLinkPicker('parent')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-earth text-sm ${
+                      linkMode === 'parent' ? 'bg-moss/10 border border-moss/30' : 'hover:bg-stone/30'
+                    }`}
+                  >
+                    <Users className="w-4 h-4 text-moss" />
+                    Link Existing Parent
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => openLinkPicker('child')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-earth text-sm ${
-                  linkMode === 'child' ? 'bg-moss/10 border border-moss/30' : 'hover:bg-stone/30'
-                }`}
-              >
-                <UserPlus className="w-4 h-4 text-moss" />
-                Link Existing Child
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => openLinkPicker('child')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-earth text-sm ${
+                      linkMode === 'child' ? 'bg-moss/10 border border-moss/30' : 'hover:bg-stone/30'
+                    }`}
+                  >
+                    <UserPlus className="w-4 h-4 text-moss" />
+                    Link Existing Child
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => openLinkPicker('spouse')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-earth text-sm ${
-                  linkMode === 'spouse'
-                    ? 'bg-sunrise/10 border border-sunrise/30'
-                    : 'hover:bg-stone/30'
-                }`}
-              >
-                <Heart className="w-4 h-4 text-sunrise" />
-                Link Existing Spouse
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => openLinkPicker('spouse')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-earth text-sm ${
+                      linkMode === 'spouse'
+                        ? 'bg-sunrise/10 border border-sunrise/30'
+                        : 'hover:bg-stone/30'
+                    }`}
+                  >
+                    <Heart className="w-4 h-4 text-sunrise" />
+                    Link Existing Spouse
+                  </button>
+                </>
+              ) : null}
 
-              {linkMode && (
+              {canLinkExistingRelationships && linkMode && (
                 <div className="mt-1 rounded-xl border border-stone/50 bg-white/70 p-3">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-earth">
