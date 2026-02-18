@@ -15,6 +15,7 @@ import {
 import { FamilyTreeCard } from '@/components/tree/FamilyTreeCard';
 import { NodeDetailSidebar } from '@/components/tree/NodeDetailSidebar';
 import { createClient } from '@/lib/supabase/client';
+import { getDateOnlyYear } from '@/utils/dateOnly';
 import {
   buildFamilyTreeLayout,
   type FamilyTreeEdgeInput,
@@ -443,7 +444,7 @@ function TreeView({ graphId }: { graphId: string }) {
         avatarZoom: node.avatar_zoom,
         avatarFocusX: node.avatar_focus_x,
         avatarFocusY: node.avatar_focus_y,
-        birthYear: node.birthdate ? new Date(node.birthdate).getFullYear() : null,
+        birthYear: getDateOnlyYear(node.birthdate),
         isAlive: !node.death_date,
         isClaimed: Boolean(node.claimed_by),
         x: node.x,

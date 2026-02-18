@@ -22,6 +22,7 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { CreateMemoryModal } from '@/components/memories/CreateMemoryModal';
+import { formatDateOnly, getDateOnlyYear } from '@/utils/dateOnly';
 import { buildStoryExcerpt } from '@/utils/markdown';
 import { buildImageCropStyle } from '@/utils/imageCrop';
 
@@ -867,19 +868,19 @@ export function NodeDetailSidebar({
               {node.birthdate && (
                 <p className="text-sm text-bark/50 flex items-center gap-1.5 mt-1">
                   <Calendar className="w-3.5 h-3.5" />
-                  {new Date(node.birthdate).toLocaleDateString('en-US', {
+                  {formatDateOnly(node.birthdate, 'en-US', {
                     month: 'long',
                     day: 'numeric',
                     year: 'numeric',
-                  })}
+                  }) || 'Unknown'}
                   {node.death_date && (
                     <>
                       {' — '}
-                      {new Date(node.death_date).toLocaleDateString('en-US', {
+                      {formatDateOnly(node.death_date, 'en-US', {
                         month: 'long',
                         day: 'numeric',
                         year: 'numeric',
-                      })}
+                      }) || 'Unknown'}
                     </>
                   )}
                 </p>
@@ -1319,9 +1320,7 @@ export function NodeDetailSidebar({
                               {candidate.first_name} {candidate.last_name || ''}
                             </p>
                             <p className="text-[11px] text-bark/55">
-                              {candidate.birthdate
-                                ? new Date(candidate.birthdate).getFullYear()
-                                : 'No birth year'}
+                              {getDateOnlyYear(candidate.birthdate) || 'No birth year'}
                               {candidate.claimed_by ? ' • Claimed' : ' • Unclaimed'}
                             </p>
                           </div>

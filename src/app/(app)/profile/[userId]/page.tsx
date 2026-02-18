@@ -5,6 +5,7 @@ import { Calendar, UserRound } from 'lucide-react';
 
 import { ProfileEditorForm } from '@/components/profile/ProfileEditorForm';
 import { createClient } from '@/lib/supabase/server';
+import { formatDateOnly } from '@/utils/dateOnly';
 import { buildImageCropStyle } from '@/utils/imageCrop';
 import { buildStoryExcerpt, extractFirstMarkdownImage } from '@/utils/markdown';
 
@@ -247,7 +248,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
               ) : null}
               {subjectProfile.birthdate ? (
                 <span className="px-2 py-1 rounded-full bg-stone/35">
-                  Born {new Date(subjectProfile.birthdate).toLocaleDateString()}
+                  Born {formatDateOnly(subjectProfile.birthdate) || 'Unknown'}
                 </span>
               ) : null}
             </div>
