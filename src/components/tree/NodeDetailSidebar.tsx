@@ -1045,7 +1045,7 @@ export function NodeDetailSidebar({
                 </div>
               )}
 
-              {!node.claimed_by ? (
+              {!node.claimed_by && (
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
@@ -1054,14 +1054,6 @@ export function NodeDetailSidebar({
                   <Edit3 className="w-4 h-4 text-moss" />
                   Edit Details
                 </button>
-              ) : (
-                <Link
-                  href={`/profile/${node.claimed_by}`}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-stone/30 transition-colors text-earth text-sm"
-                >
-                  <Edit3 className="w-4 h-4 text-moss" />
-                  Edit via Profile
-                </Link>
               )}
 
               <button
