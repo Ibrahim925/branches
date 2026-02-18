@@ -40,6 +40,7 @@ interface NodeData {
   avatar_focus_y?: number | null;
   claimed_by: string | null;
   created_at: string;
+  created_by: string | null;
 }
 
 interface ClaimedProfileData {
@@ -518,6 +519,17 @@ export function NodeDetailSidebar({
 
   async function handleDelete() {
     if (deleting) return;
+    const canDelete =
+      currentGraphRole === 'admin' ||
+      (currentGraphRole === 'editor' && node?.created_by === currentUserId);
+    if (!canDelete) {
+      setActionError(
+        currentGraphRole === 'viewer'
+          ? 'Viewers cannot remove people from the tree.'
+          : 'Only admins or the editor who created this person can remove them.'
+      );
+      return;
+    }
     if (!confirm('Are you sure you want to remove this person from the tree?')) return;
 
     setDeleting(true);
@@ -810,6 +822,9 @@ export function NodeDetailSidebar({
         : 'Spouse';
   const canLinkExistingRelationships =
     currentGraphRole === 'admin' || currentGraphRole === 'editor';
+  const canDeleteNodeFromTree =
+    currentGraphRole === 'admin' ||
+    (currentGraphRole === 'editor' && node?.created_by === currentUserId);
   const canClaimThisNode =
     Boolean(node) &&
     !node?.claimed_by &&
@@ -1397,15 +1412,25 @@ export function NodeDetailSidebar({
 
               <div className="h-px bg-stone/30 my-2" />
 
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-error/10 transition-colors text-error/70 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                {deleting ? 'Removing...' : 'Remove from Tree'}
-              </button>
+              {canDeleteNodeFromTree ? (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-error/10 transition-colors text-error/70 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deleting ? 'Removing...' : 'Remove from Tree'}
+                </button>
+              ) : currentGraphRole === 'viewer' ? (
+                <p className="px-1 text-xs text-bark/55">
+                  Viewers cannot remove people from the tree.
+                </p>
+              ) : currentGraphRole === 'editor' ? (
+                <p className="px-1 text-xs text-bark/55">
+                  Editors can only remove people they created.
+                </p>
+              ) : null}
             </div>
           </>
         )}

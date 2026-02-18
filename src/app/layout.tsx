@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ClientRuntime } from '@/components/system/ClientRuntime';
+import { AppLaunchSplash } from '@/components/system/AppLaunchSplash';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -43,6 +44,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} antialiased min-h-full`}>
         <ClientRuntime />
+        <AppLaunchSplash />
         {children}
       </body>
     </html>

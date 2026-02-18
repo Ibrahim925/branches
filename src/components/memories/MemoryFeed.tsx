@@ -41,6 +41,10 @@ type MemoryComment = {
   memory_id: string;
   author_id: string;
   author_name: string;
+  author_avatar_url: string | null;
+  author_avatar_zoom: number | null;
+  author_avatar_focus_x: number | null;
+  author_avatar_focus_y: number | null;
   content: string;
   created_at: string;
 };
@@ -66,6 +70,13 @@ function formatCommentTime(dateString: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function getCommentInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'FM';
+  if (parts.length === 1) return (parts[0]?.[0] || 'F').toUpperCase();
+  return `${parts[0]?.[0] || ''}${parts[1]?.[0] || ''}`.toUpperCase();
 }
 
 export function MemoryFeed({
@@ -350,17 +361,43 @@ export function MemoryFeed({
                           key={comment.id}
                           className="rounded-xl border border-stone/30 bg-stone/20 px-3 py-2"
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-medium text-earth">
-                              {comment.author_name}
-                            </span>
-                            <span className="text-[11px] text-bark/35">
-                              {formatCommentTime(comment.created_at)}
-                            </span>
+                          <div className="flex items-start gap-2.5">
+                            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-stone/35 bg-gradient-to-br from-moss/90 to-leaf/90">
+                              {comment.author_avatar_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={comment.author_avatar_url}
+                                  alt={comment.author_name}
+                                  className="h-full w-full object-cover"
+                                  style={buildImageCropStyle(
+                                    {
+                                      zoom: comment.author_avatar_zoom,
+                                      focusX: comment.author_avatar_focus_x,
+                                      focusY: comment.author_avatar_focus_y,
+                                    },
+                                    { minZoom: 1, maxZoom: 3 }
+                                  )}
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-white">
+                                  {getCommentInitials(comment.author_name)}
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-xs font-medium text-earth">
+                                  {comment.author_name}
+                                </span>
+                                <span className="text-[11px] text-bark/35 whitespace-nowrap">
+                                  {formatCommentTime(comment.created_at)}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-sm text-bark/70 whitespace-pre-wrap">
+                                {comment.content}
+                              </p>
+                            </div>
                           </div>
-                          <p className="text-sm text-bark/70 mt-1 whitespace-pre-wrap">
-                            {comment.content}
-                          </p>
                         </div>
                       ))
                     )}

@@ -71,7 +71,7 @@ type RawEdgeRecord = {
 const CANVAS_PADDING_X = 760;
 const CANVAS_PADDING_Y = 420;
 const DEFAULT_ZOOM = 1;
-const MIN_ZOOM = 0.45;
+const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 1.85;
 const ZOOM_STEP = 0.08;
 const WHEEL_ZOOM_SENSITIVITY = 0.0015;
@@ -100,6 +100,7 @@ function TreeView({ graphId }: { graphId: string }) {
 
   const [rawNodes, setRawNodes] = useState<RawNodeRecord[]>([]);
   const [rawEdges, setRawEdges] = useState<RawEdgeRecord[]>([]);
+  const [viewerNodeId, setViewerNodeId] = useState<string | null>(null);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const [graphName, setGraphName] = useState('');
@@ -436,6 +437,11 @@ function TreeView({ graphId }: { graphId: string }) {
 
     setRawNodes(mergedNodes);
     setRawEdges(loadedEdges);
+    setViewerNodeId(
+      viewerId
+        ? mergedNodes.find((node) => node.claimed_by === viewerId)?.id || null
+        : null
+    );
 
     setActiveNodeId((current) =>
       current && !mergedNodes.some((node) => node.id === current) ? null : current
@@ -604,12 +610,30 @@ function TreeView({ graphId }: { graphId: string }) {
       return;
     }
 
-    const nextLeft = Math.max(0, (canvasMetrics.scaledWidth - viewport.clientWidth) / 2);
-    const nextTop = Math.max(0, CANVAS_PADDING_Y * zoom - 90);
+    const viewerNode = viewerNodeId
+      ? layout.nodes.find((node) => node.id === viewerNodeId)
+      : null;
+    const nextLeft = viewerNode
+      ? (CANVAS_PADDING_X + viewerNode.centerX) * zoom - viewport.clientWidth / 2
+      : (canvasMetrics.scaledWidth - viewport.clientWidth) / 2;
+    const nextTop = viewerNode
+      ? (CANVAS_PADDING_Y + viewerNode.centerY) * zoom - viewport.clientHeight / 2
+      : CANVAS_PADDING_Y * zoom - 90;
 
-    viewport.scrollTo({ left: nextLeft, top: nextTop, behavior: 'smooth' });
+    const maxLeft = Math.max(0, canvasMetrics.scaledWidth - viewport.clientWidth);
+    const maxTop = Math.max(0, canvasMetrics.scaledHeight - viewport.clientHeight);
+    const clampedLeft = Math.min(maxLeft, Math.max(0, nextLeft));
+    const clampedTop = Math.min(maxTop, Math.max(0, nextTop));
+
+    viewport.scrollTo({ left: clampedLeft, top: clampedTop, behavior: 'auto' });
     didInitialCenterRef.current = true;
-  }, [canvasMetrics.scaledWidth, layout.nodes.length, zoom]);
+  }, [
+    canvasMetrics.scaledHeight,
+    canvasMetrics.scaledWidth,
+    layout.nodes,
+    viewerNodeId,
+    zoom,
+  ]);
 
   useEffect(() => {
     const viewport = viewportRef.current;

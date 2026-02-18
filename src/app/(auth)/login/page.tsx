@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion } from 'framer-motion';
@@ -14,8 +14,35 @@ function LoginContent() {
   const [error, setError] = useState('');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const nextParam = searchParams.get('next');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resumeExistingSession() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (cancelled || !user) return;
+
+      const safeNext =
+        nextParam &&
+        nextParam.startsWith('/') &&
+        !nextParam.startsWith('//')
+          ? nextParam
+          : '/dashboard';
+
+      router.replace(safeNext);
+    }
+
+    void resumeExistingSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nextParam, router, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

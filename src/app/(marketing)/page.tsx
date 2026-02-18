@@ -1,3 +1,6 @@
+import { redirect } from 'next/navigation';
+
+import { createClient } from '@/lib/supabase/server';
 import { DemoTree } from './components/DemoTree';
 import { FeatureShowcase } from './components/FeatureShowcase';
 import { FinalCTA } from './components/FinalCTA';
@@ -6,7 +9,30 @@ import { HowItWorksTimeline } from './components/HowItWorksTimeline';
 import { MobileOnboarding } from './components/MobileOnboarding';
 import { TestimonialsSection } from './components/TestimonialsSection';
 
-export default function LandingPage() {
+type OnboardingProfileRow = {
+  onboarding_completed: boolean;
+};
+
+export default async function LandingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('onboarding_completed')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profileRow && !(profileRow as OnboardingProfileRow).onboarding_completed) {
+      redirect('/onboarding');
+    }
+
+    redirect('/dashboard');
+  }
+
   return (
     <>
       <div className="md:hidden">

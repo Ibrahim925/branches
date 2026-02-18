@@ -56,6 +56,10 @@ type ProfileRow = {
   id: string;
   display_name: string | null;
   email: string | null;
+  avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
 };
 
 type NodeSubjectRow = {
@@ -89,8 +93,19 @@ type MemoryComment = {
   memory_id: string;
   author_id: string;
   author_name: string;
+  author_avatar_url: string | null;
+  author_avatar_zoom: number | null;
+  author_avatar_focus_x: number | null;
+  author_avatar_focus_y: number | null;
   content: string;
   created_at: string;
+};
+
+type ProfileAvatar = {
+  avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
 };
 
 type GraphMembershipRoleRow = {
@@ -124,6 +139,19 @@ function buildNameMap(profiles: ProfileRow[]) {
   return map;
 }
 
+function buildProfileAvatarMap(profiles: ProfileRow[]) {
+  const map: Record<string, ProfileAvatar> = {};
+  profiles.forEach((profile) => {
+    map[profile.id] = {
+      avatar_url: profile.avatar_url,
+      avatar_zoom: profile.avatar_zoom,
+      avatar_focus_x: profile.avatar_focus_x,
+      avatar_focus_y: profile.avatar_focus_y,
+    };
+  });
+  return map;
+}
+
 function formatNodeName(node: Pick<NodeSubjectRow, 'first_name' | 'last_name'>) {
   const fullName = `${node.first_name || ''} ${node.last_name || ''}`.trim();
   return fullName || 'Family Member';
@@ -135,6 +163,7 @@ export default function MemoriesPage() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [commentsByMemory, setCommentsByMemory] = useState<Record<string, MemoryComment[]>>({});
   const [profileNameById, setProfileNameById] = useState<Record<string, string>>({});
+  const [profileAvatarById, setProfileAvatarById] = useState<Record<string, ProfileAvatar>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<
     'admin' | 'editor' | 'viewer' | null
@@ -188,6 +217,8 @@ export default function MemoriesPage() {
     if (rows.length === 0) {
       setMemories([]);
       setCommentsByMemory({});
+      setProfileNameById({});
+      setProfileAvatarById({});
       setLoading(false);
       return;
     }
@@ -241,7 +272,9 @@ export default function MemoriesPage() {
       profileIds.length > 0
         ? supabase
             .from('profiles')
-            .select('id,display_name,email')
+            .select(
+              'id,display_name,email,avatar_url,avatar_zoom,avatar_focus_x,avatar_focus_y'
+            )
             .in('id', profileIds)
         : Promise.resolve({ data: [] }),
       nodeSubjectIds.length > 0
@@ -253,11 +286,13 @@ export default function MemoriesPage() {
     ]);
 
     const nameById = buildNameMap((profileRows as ProfileRow[]) ?? []);
+    const avatarById = buildProfileAvatarMap((profileRows as ProfileRow[]) ?? []);
     const nodeNameById: Record<string, string> = {};
     ((nodeRows as NodeSubjectRow[]) ?? []).forEach((node) => {
       nodeNameById[node.id] = formatNodeName(node);
     });
     setProfileNameById(nameById);
+    setProfileAvatarById(avatarById);
 
     const likeCountByMemory: Record<string, number> = {};
     const likedByCurrentUser = new Set<string>();
@@ -277,6 +312,10 @@ export default function MemoriesPage() {
       commentsMap[comment.memory_id].push({
         ...comment,
         author_name: nameById[comment.author_id] || 'Family Member',
+        author_avatar_url: avatarById[comment.author_id]?.avatar_url || null,
+        author_avatar_zoom: avatarById[comment.author_id]?.avatar_zoom ?? null,
+        author_avatar_focus_x: avatarById[comment.author_id]?.avatar_focus_x ?? null,
+        author_avatar_focus_y: avatarById[comment.author_id]?.avatar_focus_y ?? null,
       });
     });
     setCommentsByMemory(commentsMap);
@@ -405,9 +444,14 @@ export default function MemoriesPage() {
 
       const insertedComment = data as MemoryCommentRow;
       const authorName = profileNameById[currentUserId] || 'You';
+      const authorAvatar = profileAvatarById[currentUserId];
       const nextComment: MemoryComment = {
         ...insertedComment,
         author_name: authorName,
+        author_avatar_url: authorAvatar?.avatar_url || null,
+        author_avatar_zoom: authorAvatar?.avatar_zoom ?? null,
+        author_avatar_focus_x: authorAvatar?.avatar_focus_x ?? null,
+        author_avatar_focus_y: authorAvatar?.avatar_focus_y ?? null,
       };
 
       setCommentsByMemory((current) => ({
@@ -426,7 +470,7 @@ export default function MemoriesPage() {
       setCommentLoadingByMemory((current) => ({ ...current, [memoryId]: false }));
       return null;
     },
-    [currentUserId, profileNameById, supabase]
+    [currentUserId, profileAvatarById, profileNameById, supabase]
   );
 
   const deleteMemory = useCallback(
