@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { motion, AnimatePresence } from 'framer-motion';
+import { nativeBridge } from '@/lib/native';
+import { motion } from 'framer-motion';
 import {
   UserPlus,
   Mail,
@@ -18,6 +19,9 @@ import {
   Share2,
   Trash2,
 } from 'lucide-react';
+import { MobilePrimaryAction } from '@/components/system/MobilePrimaryAction';
+import { MobileActionSheet } from '@/components/system/MobileActionSheet';
+import { Skeleton } from '@/components/system/Skeleton';
 
 type InviteRole = 'admin' | 'editor' | 'viewer';
 type InviteStatus = 'pending' | 'accepted' | 'expired';
@@ -63,7 +67,23 @@ export default function InvitesPage() {
   const [error, setError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [deletingInviteId, setDeletingInviteId] = useState<string | null>(null);
+  const [pendingDeleteInvite, setPendingDeleteInvite] = useState<Invite | null>(null);
   const hasUnclaimedNodes = unclaimedNodes.length > 0;
+  const pendingClaimInviteNodeIds = useMemo(
+    () =>
+      new Set(
+        invites
+          .filter((invite) => invite.status === 'pending' && Boolean(invite.node_id))
+          .map((invite) => invite.node_id as string)
+      ),
+    [invites]
+  );
+  const availableClaimNodes = useMemo(
+    () => unclaimedNodes.filter((node) => !pendingClaimInviteNodeIds.has(node.id)),
+    [pendingClaimInviteNodeIds, unclaimedNodes]
+  );
+  const hasClaimInviteTargets = availableClaimNodes.length > 0;
+  const pendingClaimCount = pendingClaimInviteNodeIds.size;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -140,6 +160,10 @@ export default function InvitesPage() {
       setError('Choose an unclaimed family member for this claim invite.');
       return;
     }
+    if (inviteType === 'claim' && pendingClaimInviteNodeIds.has(selectedNodeId)) {
+      setError('A claim invite is already pending for this family member.');
+      return;
+    }
 
     setCreating(true);
     const {
@@ -152,6 +176,23 @@ export default function InvitesPage() {
       return;
     }
 
+    if (inviteType === 'claim') {
+      const { data: existingInvite } = await supabase
+        .from('invites')
+        .select('id')
+        .eq('graph_id', graphId)
+        .eq('node_id', selectedNodeId)
+        .eq('status', 'pending')
+        .limit(1)
+        .maybeSingle();
+
+      if (existingInvite) {
+        setError('A claim invite is already pending for this family member.');
+        setCreating(false);
+        return;
+      }
+    }
+
     const { error } = await supabase.from('invites').insert({
       graph_id: graphId,
       invited_by: user.id,
@@ -161,7 +202,14 @@ export default function InvitesPage() {
     });
 
     if (error) {
-      setError(error.message);
+      if (
+        error.code === '23505' &&
+        error.message.includes('idx_invites_unique_pending_claim_per_node')
+      ) {
+        setError('A claim invite is already pending for this family member.');
+      } else {
+        setError(error.message);
+      }
       setCreating(false);
       return;
     }
@@ -177,9 +225,14 @@ export default function InvitesPage() {
 
   async function copyLink(token: string) {
     const url = getInviteUrl(token);
-    await navigator.clipboard.writeText(url);
-    setCopied(token);
-    setTimeout(() => setCopied(null), 2000);
+    const copied = await nativeBridge.copyText(url);
+    if (copied) {
+      setCopied(token);
+      setTimeout(() => setCopied(null), 2000);
+      return;
+    }
+
+    setError('Could not copy invite link.');
   }
 
   async function shareLink(token: string, invite: Invite) {
@@ -194,34 +247,24 @@ export default function InvitesPage() {
       ? `${targetName}, claim your place in ${graphName}.`
       : `You are invited to join ${graphName}.`;
 
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          url,
-        });
-      } catch {
-        // User canceled native sharing.
-      }
-      return;
-    }
+    const shared = await nativeBridge.share({
+      title: shareTitle,
+      text: shareText,
+      url,
+    });
 
-    await navigator.clipboard.writeText(url);
-    setCopied(token);
-    setTimeout(() => setCopied(null), 2000);
+    if (!shared) {
+      const copied = await nativeBridge.copyText(url);
+      if (!copied) {
+        setError('Could not share invite link.');
+        return;
+      }
+      setCopied(token);
+      setTimeout(() => setCopied(null), 2000);
+    }
   }
 
   async function deleteInvite(invite: Invite) {
-    const targetLabel = invite.node
-      ? getNodeName(invite.node)
-      : invite.email || 'this invitation';
-
-    const confirmed = window.confirm(
-      `Delete invite for ${targetLabel}? This action cannot be undone.`
-    );
-    if (!confirmed) return;
-
     setListError(null);
     setDeletingInviteId(invite.id);
 
@@ -240,6 +283,12 @@ export default function InvitesPage() {
     setDeletingInviteId(null);
   }
 
+  async function confirmDeleteInvite() {
+    if (!pendingDeleteInvite) return;
+    await deleteInvite(pendingDeleteInvite);
+    setPendingDeleteInvite(null);
+  }
+
   const statusIcons = {
     pending: Clock,
     accepted: CheckCircle,
@@ -253,7 +302,7 @@ export default function InvitesPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-4 py-8 pb-24 md:pb-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -271,7 +320,7 @@ export default function InvitesPage() {
             setError(null);
             setShowCreate(true);
           }}
-          className="px-5 py-2.5 bg-gradient-to-r from-moss to-leaf text-white rounded-xl text-sm font-medium shadow-md shadow-moss/15 hover:shadow-lg transition-shadow flex items-center gap-2"
+          className="hidden md:inline-flex px-5 py-2.5 bg-gradient-to-r from-moss to-leaf text-white rounded-xl text-sm font-medium shadow-md shadow-moss/15 hover:shadow-lg transition-shadow items-center gap-2"
         >
           <UserPlus className="w-4 h-4" />
           Invite
@@ -280,8 +329,20 @@ export default function InvitesPage() {
 
       {/* Invites list */}
       {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="w-6 h-6 text-moss animate-spin" />
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-4 rounded-xl border border-stone/30 bg-white/70 p-4"
+            >
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="flex-1">
+                <Skeleton className="h-4 w-44 rounded-md" />
+                <Skeleton className="mt-2 h-3 w-56 rounded-md" />
+              </div>
+              <Skeleton className="h-6 w-20 rounded-full" />
+            </div>
+          ))}
         </div>
       ) : invites.length === 0 ? (
         <div className="text-center py-20">
@@ -304,50 +365,72 @@ export default function InvitesPage() {
           ) : null}
           {invites.map((invite, i) => {
             const StatusIcon = statusIcons[invite.status];
+            const inviteTitle = invite.node
+              ? getNodeName(invite.node)
+              : invite.email || 'Link invitation';
+            const inviteSubtitle = invite.node
+              ? 'Claim invite'
+              : `Tree invite • ${invite.role} role`;
             return (
               <motion.div
                 key={invite.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="flex items-center gap-4 p-4 rounded-xl bg-white/70 border border-stone/30"
+                className="rounded-2xl border border-stone/30 bg-white/72 p-4"
               >
-                <div className="w-10 h-10 bg-gradient-to-br from-moss/20 to-leaf/20 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Mail className="w-5 h-5 text-moss" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-earth">
-                    {invite.email || 'Link invitation'}
-                  </p>
-                  <p className="text-xs text-bark/40 mt-0.5 flex items-center gap-1.5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-moss/20 to-leaf/20">
+                    <Mail className="h-5 w-5 text-moss" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-base font-semibold text-earth">{inviteTitle}</p>
+                      <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium md:hidden ${statusColors[invite.status]}`}>
+                        <StatusIcon className="h-3 w-3" />
+                        {invite.status}
+                      </div>
+                    </div>
+                    <p className="mt-1 flex items-center gap-1.5 text-sm text-bark/50">
+                      {invite.node ? (
+                        <UserRound className="h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <Link2 className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {inviteSubtitle}
+                    </p>
                     {invite.node ? (
-                      <UserRound className="w-3.5 h-3.5" />
-                    ) : (
-                      <Link2 className="w-3.5 h-3.5" />
-                    )}
-                    {invite.node
-                      ? `Claim invite: ${getNodeName(invite.node)}`
-                      : `Tree invite - ${invite.role} role`}
-                  </p>
+                      <p className="mt-1 text-xs text-bark/45">
+                        Personalized claim link for this family member.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${statusColors[invite.status]}`}>
+                    <StatusIcon className="w-3 h-3" />
+                    {invite.status}
+                  </div>
                 </div>
-                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${statusColors[invite.status]}`}>
-                  <StatusIcon className="w-3 h-3" />
-                  {invite.status}
-                </div>
-                <div className="flex items-center gap-1">
+
+                <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-stone/20 pt-3">
                   {invite.status === 'pending' ? (
                     <>
                       <button
+                        type="button"
                         onClick={() => void shareLink(invite.token, invite)}
-                        className="p-2 hover:bg-stone/30 rounded-lg transition-colors"
+                        className="tap-target rounded-lg p-2.5 text-bark/55 transition-colors hover:bg-stone/30"
                         title="Share invite link"
+                        aria-label="Share invite link"
                       >
                         <Share2 className="w-4 h-4 text-bark/40" />
                       </button>
                       <button
+                        type="button"
                         onClick={() => void copyLink(invite.token)}
-                        className="p-2 hover:bg-stone/30 rounded-lg transition-colors"
+                        className="tap-target rounded-lg p-2.5 text-bark/55 transition-colors hover:bg-stone/30"
                         title="Copy invite link"
+                        aria-label="Copy invite link"
                       >
                         {copied === invite.token ? (
                           <Check className="w-4 h-4 text-success" />
@@ -358,10 +441,12 @@ export default function InvitesPage() {
                     </>
                   ) : null}
                   <button
-                    onClick={() => void deleteInvite(invite)}
+                    type="button"
+                    onClick={() => setPendingDeleteInvite(invite)}
                     disabled={deletingInviteId === invite.id}
-                    className="p-2 hover:bg-error/10 rounded-lg transition-colors disabled:opacity-60"
+                    className="tap-target rounded-lg p-2.5 text-bark/55 transition-colors hover:bg-error/10 disabled:opacity-60"
                     title="Delete invite"
+                    aria-label="Delete invite"
                   >
                     {deletingInviteId === invite.id ? (
                       <Loader2 className="w-4 h-4 text-bark/40 animate-spin" />
@@ -376,156 +461,211 @@ export default function InvitesPage() {
         </div>
       )}
 
-      {/* Create invite modal */}
-      <AnimatePresence>
-        {showCreate && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={resetCreateState}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl"
+      <MobilePrimaryAction
+        label="Invite member"
+        ariaLabel="Invite member"
+        icon={<UserPlus className="w-6 h-6" />}
+        onPress={() => {
+          setError(null);
+          setShowCreate(true);
+        }}
+        hidden={showCreate || Boolean(pendingDeleteInvite)}
+      />
+
+      <MobileActionSheet
+        open={showCreate}
+        onClose={resetCreateState}
+        title="Send Invitation"
+        ariaLabel="Send invitation modal"
+        className="md:max-w-md"
+      >
+        <form
+          className="mobile-sheet-body pt-4 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createInvite();
+          }}
+        >
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address (optional for link invites)"
+            className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 text-sm text-earth placeholder:text-bark/30"
+          />
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setInviteType('tree');
+                setSelectedNodeId('');
+                setError(null);
+              }}
+              className={`tap-target py-3 rounded-xl text-sm font-medium transition-all ${
+                inviteType === 'tree'
+                  ? 'bg-moss/10 text-moss border-2 border-moss/30'
+                  : 'bg-stone/20 text-bark/55 border-2 border-transparent'
+              }`}
             >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-earth">
-                  Send Invitation
-                </h2>
-                <button
-                  onClick={resetCreateState}
-                  className="p-1.5 hover:bg-stone/50 rounded-lg transition-colors"
-                >
-                  <X className="w-4 h-4 text-bark/40" />
-                </button>
-              </div>
+              Tree Invite
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!hasClaimInviteTargets) return;
+                setInviteType('claim');
+                setError(null);
+                if (
+                  selectedNodeId &&
+                  pendingClaimInviteNodeIds.has(selectedNodeId)
+                ) {
+                  setSelectedNodeId('');
+                }
+              }}
+              disabled={!hasClaimInviteTargets}
+              className={`tap-target py-3 rounded-xl text-sm font-medium transition-all ${
+                inviteType === 'claim'
+                  ? 'bg-moss/10 text-moss border-2 border-moss/30'
+                  : 'bg-stone/20 text-bark/55 border-2 border-transparent'
+              } ${!hasClaimInviteTargets ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              Claim Member
+            </button>
+          </div>
 
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email address (optional for link invites)"
-                className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 text-sm text-earth placeholder:text-bark/30 mb-4"
-              />
-
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInviteType('tree');
-                    setSelectedNodeId('');
-                    setError(null);
-                  }}
-                  className={`py-3 rounded-xl text-sm font-medium transition-all ${
-                    inviteType === 'tree'
-                      ? 'bg-moss/10 text-moss border-2 border-moss/30'
-                      : 'bg-stone/20 text-bark/55 border-2 border-transparent'
-                  }`}
-                >
-                  Tree Invite
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInviteType('claim');
-                    setError(null);
-                  }}
-                  disabled={!hasUnclaimedNodes}
-                  className={`py-3 rounded-xl text-sm font-medium transition-all ${
-                    inviteType === 'claim'
-                      ? 'bg-moss/10 text-moss border-2 border-moss/30'
-                      : 'bg-stone/20 text-bark/55 border-2 border-transparent'
-                  } ${!hasUnclaimedNodes ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  Claim Member
-                </button>
-              </div>
-
-              {inviteType === 'claim' && (
-                <div className="mb-4">
-                  {!hasUnclaimedNodes ? (
-                    <p className="text-xs text-bark/50 mb-3">
-                      Everyone in this tree has already claimed a profile.
-                    </p>
-                  ) : null}
-                  <select
-                    value={selectedNodeId}
-                    onChange={(event) => setSelectedNodeId(event.target.value)}
-                    disabled={!hasUnclaimedNodes}
-                    className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 text-sm text-earth bg-white"
-                  >
-                    <option value="">Select unclaimed member</option>
-                    {unclaimedNodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {getNodeName(node)}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-bark/40 mt-2">
-                    This link lets that person claim their own profile in {graphName}.
-                  </p>
-                </div>
-              )}
-
-              {/* Role selector */}
-              <div className="flex gap-2 mb-4">
-                <button
-                  type="button"
-                  onClick={() => setRole('editor')}
-                  className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${
-                    role === 'editor'
-                      ? 'bg-moss/10 text-moss border-2 border-moss/30'
-                      : 'bg-stone/20 text-bark/50 border-2 border-transparent'
-                  }`}
-                >
-                  Editor
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('viewer')}
-                  className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${
-                    role === 'viewer'
-                      ? 'bg-moss/10 text-moss border-2 border-moss/30'
-                      : 'bg-stone/20 text-bark/50 border-2 border-transparent'
-                  }`}
-                >
-                  Viewer
-                </button>
-              </div>
-
-              <p className="text-xs text-bark/40 mb-4">
-                {inviteType === 'claim'
-                  ? 'Claim links create a personalized invite preview using the selected member name.'
-                  : 'Editors can add and modify family members. Viewers can only browse the tree.'}
-              </p>
-
-              {error ? (
-                <p className="text-xs text-error mb-4">{error}</p>
+          {inviteType === 'claim' ? (
+            <div>
+              {!hasClaimInviteTargets ? (
+                <p className="text-xs text-bark/50 mb-3">
+                  {hasUnclaimedNodes
+                    ? 'All unclaimed members already have pending claim invites.'
+                    : 'Everyone in this tree has already claimed a profile.'}
+                </p>
               ) : null}
-
-              <button
-                onClick={createInvite}
-                disabled={creating}
-                className="w-full py-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl font-medium shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+              <select
+                value={selectedNodeId}
+                onChange={(event) => setSelectedNodeId(event.target.value)}
+                disabled={!hasClaimInviteTargets}
+                className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 text-sm text-earth bg-white"
               >
-                {creating ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <UserPlus className="w-4 h-4" />
-                    {email ? 'Send Invitation' : 'Create Invite Link'}
-                  </>
-                )}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                <option value="">Select unclaimed member</option>
+                {unclaimedNodes.map((node) => (
+                  <option
+                    key={node.id}
+                    value={node.id}
+                    disabled={pendingClaimInviteNodeIds.has(node.id)}
+                  >
+                    {pendingClaimInviteNodeIds.has(node.id)
+                      ? `${getNodeName(node)} (invite pending)`
+                      : getNodeName(node)}
+                  </option>
+                ))}
+              </select>
+              {pendingClaimCount > 0 ? (
+                <p className="text-xs text-bark/45 mt-2">
+                  {pendingClaimCount} pending claim invite{pendingClaimCount === 1 ? '' : 's'} already sent.
+                </p>
+              ) : null}
+              <p className="text-xs text-bark/40 mt-2">
+                This link lets that person claim their own profile in {graphName}.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setRole('editor')}
+              className={`tap-target flex-1 py-3 rounded-xl text-sm font-medium transition-all ${
+                role === 'editor'
+                  ? 'bg-moss/10 text-moss border-2 border-moss/30'
+                  : 'bg-stone/20 text-bark/50 border-2 border-transparent'
+              }`}
+            >
+              Editor
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole('viewer')}
+              className={`tap-target flex-1 py-3 rounded-xl text-sm font-medium transition-all ${
+                role === 'viewer'
+                  ? 'bg-moss/10 text-moss border-2 border-moss/30'
+                  : 'bg-stone/20 text-bark/50 border-2 border-transparent'
+              }`}
+            >
+              Viewer
+            </button>
+          </div>
+
+          <p className="text-xs text-bark/40">
+            {inviteType === 'claim'
+              ? 'Claim links create a personalized invite preview using the selected member name.'
+              : 'Editors can add and modify family members. Viewers can only browse the tree.'}
+          </p>
+
+          {error ? <p className="text-xs text-error">{error}</p> : null}
+
+          <button
+            type="submit"
+            disabled={creating}
+            className="tap-target w-full py-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl font-medium shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {creating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4" />
+                {email ? 'Send Invitation' : 'Create Invite Link'}
+              </>
+            )}
+          </button>
+        </form>
+      </MobileActionSheet>
+
+      <MobileActionSheet
+        open={Boolean(pendingDeleteInvite)}
+        onClose={() => setPendingDeleteInvite(null)}
+        title="Delete Invitation"
+        ariaLabel="Delete invitation confirmation"
+        className="md:max-w-sm"
+      >
+        <div className="mobile-sheet-body pt-4 space-y-4">
+          <p className="text-sm text-bark/70 leading-relaxed">
+            Delete invite for{' '}
+            <span className="font-medium text-earth">
+              {pendingDeleteInvite
+                ? pendingDeleteInvite.node
+                  ? getNodeName(pendingDeleteInvite.node)
+                  : pendingDeleteInvite.email || 'this invitation'
+                : 'this invitation'}
+            </span>
+            ? This action cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPendingDeleteInvite(null)}
+              className="tap-target flex-1 py-3 rounded-xl border border-stone/40 text-sm font-medium text-earth hover:bg-stone/20 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmDeleteInvite()}
+              disabled={
+                !pendingDeleteInvite || deletingInviteId === pendingDeleteInvite.id
+              }
+              className="tap-target flex-1 py-3 rounded-xl bg-error text-white text-sm font-medium disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {pendingDeleteInvite && deletingInviteId === pendingDeleteInvite.id ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : null}
+              Delete
+            </button>
+          </div>
+        </div>
+      </MobileActionSheet>
     </div>
   );
 }

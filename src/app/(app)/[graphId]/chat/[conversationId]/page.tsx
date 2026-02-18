@@ -3,9 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { nativeBridge } from '@/lib/native';
+import { trackPerformanceMetric } from '@/lib/telemetry/performance';
+import { buildImageCropStyle } from '@/utils/imageCrop';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ImagePlus, Loader2, Send, X } from 'lucide-react';
 import Link from 'next/link';
+import { Skeleton } from '@/components/system/Skeleton';
 
 type Message = {
   id: string;
@@ -27,6 +31,10 @@ type ProfileRow = {
   id: string;
   display_name: string | null;
   email: string | null;
+  avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
 };
 
 type TypingRow = {
@@ -34,13 +42,57 @@ type TypingRow = {
   updated_at: string;
 };
 
+type CachedProfile = {
+  name: string;
+  initials: string;
+  avatarUrl: string | null;
+  avatarZoom: number | null;
+  avatarFocusX: number | null;
+  avatarFocusY: number | null;
+};
+
+type MessageGroup = {
+  id: string;
+  senderId: string;
+  messages: Message[];
+  startsAt: string;
+  endsAt: string;
+  showTimestamp: boolean;
+};
+
 const TYPING_IDLE_MS = 1200;
 const TYPING_TTL_MS = 2600;
 const TYPING_POLL_INTERVAL_MS = 900;
 const MESSAGE_POLL_INTERVAL_MS = 1500;
+const MESSAGE_GROUP_WINDOW_MS = 3 * 60 * 1000;
+const TIMESTAMP_BREAK_MS = 8 * 60 * 1000;
 
 function formatProfileName(profile: Pick<ProfileRow, 'display_name' | 'email'>): string {
   return profile.display_name?.trim() || profile.email?.trim() || 'Unknown';
+}
+
+function toEpoch(dateIso: string) {
+  const timestamp = new Date(dateIso).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'ME';
+  if (parts.length === 1) return (parts[0]?.[0] || 'M').toUpperCase();
+  return `${parts[0]?.[0] || ''}${parts[1]?.[0] || ''}`.toUpperCase();
+}
+
+function toCachedProfile(profile: ProfileRow): CachedProfile {
+  const name = formatProfileName(profile);
+  return {
+    name,
+    initials: getInitials(name),
+    avatarUrl: profile.avatar_url,
+    avatarZoom: profile.avatar_zoom,
+    avatarFocusX: profile.avatar_focus_x,
+    avatarFocusY: profile.avatar_focus_y,
+  };
 }
 
 export default function ChatThreadPage() {
@@ -57,15 +109,19 @@ export default function ChatThreadPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [profileCache, setProfileCache] = useState<Record<string, string>>({});
+  const [profileCache, setProfileCache] = useState<Record<string, CachedProfile>>({});
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const draftStorageKey = useMemo(
+    () => `branches:draft:chat:${graphId}:${conversationId}`,
+    [conversationId, graphId]
+  );
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const profileCacheRef = useRef<Record<string, string>>({});
+  const profileCacheRef = useRef<Record<string, CachedProfile>>({});
   const typingStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localTypingRef = useRef(false);
   const isRefreshingMessagesRef = useRef(false);
@@ -78,6 +134,26 @@ export default function ChatThreadPage() {
   useEffect(() => {
     imagePreviewUrlRef.current = imagePreviewUrl;
   }, [imagePreviewUrl]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const cachedDraft = window.localStorage.getItem(draftStorageKey);
+    const nextDraft = cachedDraft || '';
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNewMessage(nextDraft);
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (newMessage.trim()) {
+      window.localStorage.setItem(draftStorageKey, newMessage);
+      return;
+    }
+
+    window.localStorage.removeItem(draftStorageKey);
+  }, [draftStorageKey, newMessage]);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -115,7 +191,9 @@ export default function ChatThreadPage() {
 
       const { data: profileRows } = await supabase
         .from('profiles')
-        .select('id,display_name,email')
+        .select(
+          'id,display_name,email,avatar_url,avatar_zoom,avatar_focus_x,avatar_focus_y'
+        )
         .in('id', missingProfileIds);
 
       const rows = (profileRows as ProfileRow[]) ?? [];
@@ -124,7 +202,7 @@ export default function ChatThreadPage() {
       setProfileCache((current) => {
         const next = { ...current };
         rows.forEach((profile) => {
-          next[profile.id] = formatProfileName(profile);
+          next[profile.id] = toCachedProfile(profile);
         });
         return next;
       });
@@ -173,6 +251,7 @@ export default function ChatThreadPage() {
   }, [conversationId, currentUserId, ensureProfilesLoaded, supabase]);
 
   const loadConversation = useCallback(async () => {
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : null;
     setLoading(true);
 
     const {
@@ -227,7 +306,16 @@ export default function ChatThreadPage() {
     await refreshMessages(true);
     await refreshTypingUsers();
     setLoading(false);
+
+    if (startedAt !== null) {
+      trackPerformanceMetric('chat.load_conversation.ms', performance.now() - startedAt, {
+        graphId,
+        conversationId,
+        participantCount: participantIds.length,
+      });
+    }
   }, [
+    graphId,
     conversationId,
     ensureProfilesLoaded,
     refreshMessages,
@@ -374,8 +462,7 @@ export default function ChatThreadPage() {
     }, TYPING_IDLE_MS);
   }
 
-  function handleImageSelected(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  function applySelectedImage(file: File) {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
@@ -389,6 +476,24 @@ export default function ChatThreadPage() {
     setSendError(null);
   }
 
+  function handleImageSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    applySelectedImage(file);
+  }
+
+  async function handleAttachImage() {
+    if (nativeBridge.isNativeApp()) {
+      const file = await nativeBridge.pickImage();
+      if (file) {
+        applySelectedImage(file);
+      }
+      return;
+    }
+
+    fileInputRef.current?.click();
+  }
+
   async function sendMessage(event: React.FormEvent) {
     event.preventDefault();
     if (!currentUserId) return;
@@ -398,9 +503,15 @@ export default function ChatThreadPage() {
 
     if (!content && !imageFile) return;
 
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setSendError('You are offline. Message sending will resume when reconnected.');
+      return;
+    }
+
     setSending(true);
     setSendError(null);
     await stopLocalTyping();
+    const sendStartedAt = typeof performance !== 'undefined' ? performance.now() : null;
 
     let imageUrl: string | null = null;
     let imageType: string | null = null;
@@ -447,9 +558,20 @@ export default function ChatThreadPage() {
 
     setNewMessage('');
     clearSelectedImage();
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(draftStorageKey);
+    }
     await refreshMessages(true);
     setSending(false);
     inputRef.current?.focus();
+
+    if (sendStartedAt !== null) {
+      trackPerformanceMetric('chat.send_message.ms', performance.now() - sendStartedAt, {
+        graphId,
+        conversationId,
+        hasImage: Boolean(imageFile),
+      });
+    }
   }
 
   function formatTime(dateString: string) {
@@ -478,10 +600,10 @@ export default function ChatThreadPage() {
     );
 
     if (!otherParticipantId) return 'Direct Message';
-    return profileCache[otherParticipantId] || 'Direct Message';
+    return profileCache[otherParticipantId]?.name || 'Direct Message';
   })();
 
-  const typingNames = typingUserIds.map((userId) => profileCache[userId] || 'Someone');
+  const typingNames = typingUserIds.map((userId) => profileCache[userId]?.name || 'Someone');
   const typingLabel =
     typingNames.length === 0
       ? ''
@@ -489,10 +611,83 @@ export default function ChatThreadPage() {
         ? `${typingNames[0]} is typing...`
         : `${typingNames.slice(0, 2).join(', ')} are typing...`;
 
+  const groupedMessages = useMemo<MessageGroup[]>(() => {
+    if (messages.length === 0) return [];
+
+    const groups: Array<Omit<MessageGroup, 'showTimestamp'>> = [];
+
+    messages.forEach((message) => {
+      const currentTimestamp = toEpoch(message.created_at);
+      const previousGroup = groups[groups.length - 1];
+
+      if (!previousGroup) {
+        groups.push({
+          id: message.id,
+          senderId: message.sender_id,
+          messages: [message],
+          startsAt: message.created_at,
+          endsAt: message.created_at,
+        });
+        return;
+      }
+
+      const lastGroupMessage = previousGroup.messages[previousGroup.messages.length - 1];
+      const lastTimestamp = toEpoch(lastGroupMessage.created_at);
+      const withinWindow =
+        currentTimestamp >= lastTimestamp &&
+        currentTimestamp - lastTimestamp <= MESSAGE_GROUP_WINDOW_MS;
+      const sameSender = previousGroup.senderId === message.sender_id;
+
+      if (sameSender && withinWindow) {
+        previousGroup.messages.push(message);
+        previousGroup.endsAt = message.created_at;
+        return;
+      }
+
+      groups.push({
+        id: message.id,
+        senderId: message.sender_id,
+        messages: [message],
+        startsAt: message.created_at,
+        endsAt: message.created_at,
+      });
+    });
+
+    return groups.map((group, index) => {
+      const nextGroup = groups[index + 1];
+      const isLastGroup = index === groups.length - 1;
+      const gapToNext = nextGroup ? toEpoch(nextGroup.startsAt) - toEpoch(group.endsAt) : Infinity;
+
+      return {
+        ...group,
+        showTimestamp: isLastGroup || gapToNext >= TIMESTAMP_BREAK_MS,
+      };
+    });
+  }, [messages]);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-moss animate-spin" />
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex items-center gap-3 border-b border-stone/30 bg-white/60 px-4 pb-3 pt-[calc(var(--safe-area-top)+0.75rem)] backdrop-blur-sm">
+          <Skeleton className="h-9 w-9 rounded-lg" />
+          <div>
+            <Skeleton className="h-4 w-36 rounded-md" />
+            <Skeleton className="mt-1 h-3 w-24 rounded-md" />
+          </div>
+        </div>
+        <div className="flex-1 space-y-4 px-4 py-6">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <div
+              key={index}
+              className={`flex ${index % 2 === 0 ? 'justify-start' : 'justify-end'}`}
+            >
+              <Skeleton className="h-12 w-48 rounded-2xl" />
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-stone/30 bg-white/60 px-4 pt-3 pb-[calc(var(--mobile-tab-bar-offset)+var(--keyboard-inset)+0.35rem)] backdrop-blur-sm">
+          <Skeleton className="h-12 w-full rounded-xl" />
+        </div>
       </div>
     );
   }
@@ -509,11 +704,12 @@ export default function ChatThreadPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-stone/30 bg-white/60 backdrop-blur-sm">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-3 px-4 pt-[calc(var(--safe-area-top)+0.75rem)] pb-3 border-b border-stone/30 bg-white/60 backdrop-blur-sm">
         <Link
           href={`/${graphId}/chat`}
-          className="p-2 hover:bg-stone/30 rounded-lg transition-colors"
+          className="tap-target p-2 hover:bg-stone/30 rounded-lg transition-colors"
+          aria-label="Back to conversations"
         >
           <ArrowLeft className="w-5 h-5 text-bark/50" />
         </Link>
@@ -525,63 +721,107 @@ export default function ChatThreadPage() {
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-4">
         {messages.length === 0 ? (
           <div className="text-center text-bark/30 text-sm py-10">
             No messages yet. Say hello!
           </div>
         ) : (
-          messages.map((message, index) => {
-            const isOwn = message.sender_id === currentUserId;
-            const showSender =
-              index === 0 || messages[index - 1].sender_id !== message.sender_id;
+          groupedMessages.map((group) => {
+            const isOwn = group.senderId === currentUserId;
+            const senderProfile = profileCache[group.senderId];
+            const senderName = senderProfile?.name || 'Unknown';
+            const showSenderName = !isOwn && conversation.type !== 'direct';
 
             return (
               <motion.div
-                key={message.id}
+                key={group.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}>
-                  {showSender && !isOwn ? (
-                    <p className="text-xs text-bark/40 mb-1 ml-1">
-                      {profileCache[message.sender_id] || 'Unknown'}
-                    </p>
-                  ) : null}
-
-                  {message.image_url ? (
-                    <div className="rounded-2xl overflow-hidden border border-stone/35 bg-white shadow-sm">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                <div
+                  className={`flex max-w-[88%] items-end gap-2 ${
+                    isOwn ? 'flex-row-reverse' : 'flex-row'
+                  }`}
+                >
+                  <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border border-stone/35 bg-gradient-to-br from-moss/90 to-leaf/90">
+                    {senderProfile?.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={message.image_url}
-                        alt="Chat attachment"
-                        className="max-h-80 w-auto object-cover"
+                        src={senderProfile.avatarUrl}
+                        alt={senderName}
+                        className="h-full w-full object-cover"
+                        style={buildImageCropStyle(
+                          {
+                            zoom: senderProfile.avatarZoom,
+                            focusX: senderProfile.avatarFocusX,
+                            focusY: senderProfile.avatarFocusY,
+                          },
+                          { minZoom: 1, maxZoom: 3 }
+                        )}
                       />
-                    </div>
-                  ) : null}
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-white">
+                        {senderProfile?.initials || 'ME'}
+                      </div>
+                    )}
+                  </div>
 
-                  {message.content ? (
-                    <div
-                      className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                        message.image_url ? 'mt-2' : ''
-                      } ${
-                        isOwn
-                          ? 'bg-gradient-to-r from-moss to-leaf text-white rounded-br-md'
-                          : 'bg-stone/30 text-earth rounded-bl-md'
-                      }`}
-                    >
-                      {message.content}
-                    </div>
-                  ) : null}
+                  <div className={`flex min-w-0 flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+                    {showSenderName ? (
+                      <p className="mb-1 px-1 text-xs text-bark/40">{senderName}</p>
+                    ) : null}
 
-                  <p
-                    className={`text-[10px] text-bark/30 mt-1 ${
-                      isOwn ? 'text-right mr-1' : 'ml-1'
-                    }`}
-                  >
-                    {formatTime(message.created_at)}
-                  </p>
+                    <div className="space-y-1.5">
+                      {group.messages.map((message, messageIndex) => {
+                        const isLastInGroup = messageIndex === group.messages.length - 1;
+
+                        return (
+                          <div key={message.id} className="max-w-[min(78vw,34rem)]">
+                            {message.image_url ? (
+                              <div className="overflow-hidden rounded-2xl border border-stone/35 bg-white shadow-sm">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={message.image_url}
+                                  alt="Chat attachment"
+                                  className="max-h-80 w-auto object-cover"
+                                />
+                              </div>
+                            ) : null}
+
+                            {message.content ? (
+                              <div
+                                className={`px-4 py-2.5 text-sm leading-relaxed ${
+                                  message.image_url ? 'mt-2' : ''
+                                } ${
+                                  isOwn
+                                    ? `bg-gradient-to-r from-moss to-leaf text-white ${
+                                        isLastInGroup ? 'rounded-br-md' : 'rounded-br-2xl'
+                                      } rounded-2xl`
+                                    : `bg-stone/30 text-earth ${
+                                        isLastInGroup ? 'rounded-bl-md' : 'rounded-bl-2xl'
+                                      } rounded-2xl`
+                                }`}
+                              >
+                                {message.content}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {group.showTimestamp ? (
+                      <p
+                        className={`mt-1 px-1 text-[10px] text-bark/30 ${
+                          isOwn ? 'text-right' : 'text-left'
+                        }`}
+                      >
+                        {formatTime(group.endsAt)}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               </motion.div>
             );
@@ -610,7 +850,7 @@ export default function ChatThreadPage() {
 
       <form
         onSubmit={sendMessage}
-        className="flex items-center gap-3 px-4 py-3 border-t border-stone/30 bg-white/60 backdrop-blur-sm"
+        className="flex items-center gap-3 border-t border-stone/30 bg-white/60 px-4 pt-3 pb-[calc(var(--mobile-tab-bar-offset)+var(--keyboard-inset)+0.35rem)] backdrop-blur-sm"
       >
         <input
           ref={fileInputRef}
@@ -622,9 +862,10 @@ export default function ChatThreadPage() {
 
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="p-3 rounded-xl bg-stone/30 text-bark/60 hover:bg-stone/45 transition-colors"
+          onClick={() => void handleAttachImage()}
+          className="tap-target p-3 rounded-xl bg-stone/30 text-bark/60 hover:bg-stone/45 transition-colors"
           title="Attach image"
+          aria-label="Attach image"
         >
           <ImagePlus className="w-5 h-5" />
         </button>
@@ -637,16 +878,19 @@ export default function ChatThreadPage() {
           onBlur={() => {
             void stopLocalTyping();
           }}
+          onFocus={() => {
+            scrollToBottom();
+          }}
           placeholder="Type a message..."
           className="flex-1 px-4 py-3 rounded-xl bg-stone/20 border border-stone/30 focus:outline-none focus:ring-2 focus:ring-moss/40 text-sm text-earth placeholder:text-bark/30"
-          autoFocus
         />
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           type="submit"
           disabled={(!newMessage.trim() && !selectedImage) || sending}
-          className="p-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl shadow-sm disabled:opacity-40 transition-opacity"
+          className="tap-target p-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl shadow-sm disabled:opacity-40 transition-opacity"
+          aria-label={sending ? 'Sending message' : 'Send message'}
         >
           {sending ? (
             <Loader2 className="w-5 h-5 animate-spin" />

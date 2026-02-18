@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>Branches</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.branches.familytree</string>
+  <key>CFBundleName</key>
+  <string>Branches</string>
+
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.branches.familytree</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>branches</string>
+      </array>
+    </dict>
+  </array>
+
+  <key>NSCameraUsageDescription</key>
+  <string>Branches needs camera access to upload family photos.</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>Branches needs photo library access to choose memories and profile images.</string>
+  <key>NSPhotoLibraryAddUsageDescription</key>
+  <string>Branches needs permission to save edited photos before upload.</string>
+</dict>
+</plist>

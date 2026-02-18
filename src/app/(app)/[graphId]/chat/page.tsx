@@ -3,17 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   MessageCircle,
   Plus,
   Users,
   User,
   TreePine,
-  X,
   Loader2,
   Check,
 } from 'lucide-react';
+import { MobilePrimaryAction } from '@/components/system/MobilePrimaryAction';
+import { MobileActionSheet } from '@/components/system/MobileActionSheet';
+import { Skeleton } from '@/components/system/Skeleton';
 
 type ConversationType = 'direct' | 'group' | 'tree';
 
@@ -401,7 +403,7 @@ export default function ChatListPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-4 py-8 pb-24 md:pb-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-semibold text-earth tracking-tight">
@@ -414,20 +416,34 @@ export default function ChatListPage() {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
+          type="button"
           onClick={() => {
             setFormError(null);
             setShowCreate(true);
           }}
-          className="p-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl shadow-md shadow-moss/15 hover:shadow-lg transition-shadow"
+          className="hidden md:inline-flex tap-target p-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl shadow-md shadow-moss/15 hover:shadow-lg transition-shadow"
           title="New conversation"
+          aria-label="Create conversation"
         >
           <Plus className="w-5 h-5" />
         </motion.button>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="w-6 h-6 text-moss animate-spin" />
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-4 rounded-xl border border-stone/30 bg-white/70 p-4"
+            >
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="flex-1">
+                <Skeleton className="h-4 w-40 rounded-md" />
+                <Skeleton className="mt-2 h-3 w-52 rounded-md" />
+              </div>
+              <Skeleton className="h-3 w-16 rounded-md" />
+            </div>
+          ))}
         </div>
       ) : conversations.length === 0 ? (
         <div className="text-center py-20">
@@ -478,166 +494,163 @@ export default function ChatListPage() {
         </div>
       )}
 
-      <AnimatePresence>
-        {showCreate && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={resetCreateForm}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(event) => event.stopPropagation()}
-              className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl"
+      <MobilePrimaryAction
+        label="New conversation"
+        ariaLabel="New conversation"
+        icon={<Plus className="w-6 h-6" />}
+        onPress={() => {
+          setFormError(null);
+          setShowCreate(true);
+        }}
+        hidden={showCreate}
+      />
+
+      <MobileActionSheet
+        open={showCreate}
+        onClose={resetCreateForm}
+        title="New Conversation"
+        ariaLabel="New conversation modal"
+        className="md:max-w-md"
+      >
+        <form
+          className="mobile-sheet-body pt-4 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createConversation();
+          }}
+        >
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setNewType('direct');
+                setFormError(null);
+              }}
+              className={`tap-target py-3 rounded-xl text-sm font-medium transition-all ${
+                newType === 'direct'
+                  ? 'bg-moss/10 text-moss border-2 border-moss/30'
+                  : 'bg-stone/20 text-bark/50 border-2 border-transparent'
+              }`}
             >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-earth">New Conversation</h2>
-                <button
-                  onClick={resetCreateForm}
-                  className="p-1.5 hover:bg-stone/50 rounded-lg transition-colors"
-                >
-                  <X className="w-4 h-4 text-bark/40" />
-                </button>
-              </div>
+              DM
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNewType('group');
+                setFormError(null);
+              }}
+              className={`tap-target py-3 rounded-xl text-sm font-medium transition-all ${
+                newType === 'group'
+                  ? 'bg-moss/10 text-moss border-2 border-moss/30'
+                  : 'bg-stone/20 text-bark/50 border-2 border-transparent'
+              }`}
+            >
+              Group
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNewType('tree');
+                setFormError(null);
+              }}
+              className={`tap-target py-3 rounded-xl text-sm font-medium transition-all ${
+                newType === 'tree'
+                  ? 'bg-moss/10 text-moss border-2 border-moss/30'
+                  : 'bg-stone/20 text-bark/50 border-2 border-transparent'
+              }`}
+            >
+              Full Tree
+            </button>
+          </div>
 
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewType('direct');
-                    setFormError(null);
-                  }}
-                  className={`py-3 rounded-xl text-sm font-medium transition-all ${
-                    newType === 'direct'
-                      ? 'bg-moss/10 text-moss border-2 border-moss/30'
-                      : 'bg-stone/20 text-bark/50 border-2 border-transparent'
-                  }`}
-                >
-                  DM
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewType('group');
-                    setFormError(null);
-                  }}
-                  className={`py-3 rounded-xl text-sm font-medium transition-all ${
-                    newType === 'group'
-                      ? 'bg-moss/10 text-moss border-2 border-moss/30'
-                      : 'bg-stone/20 text-bark/50 border-2 border-transparent'
-                  }`}
-                >
-                  Group
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewType('tree');
-                    setFormError(null);
-                  }}
-                  className={`py-3 rounded-xl text-sm font-medium transition-all ${
-                    newType === 'tree'
-                      ? 'bg-moss/10 text-moss border-2 border-moss/30'
-                      : 'bg-stone/20 text-bark/50 border-2 border-transparent'
-                  }`}
-                >
-                  Full Tree
-                </button>
-              </div>
-
-              {newType === 'direct' && (
-                <div className="mb-4">
-                  <select
-                    value={selectedDmMemberId}
-                    onChange={(event) => setSelectedDmMemberId(event.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 text-sm text-earth bg-white"
-                  >
-                    <option value="">Select a family member</option>
-                    {memberOptions.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name}
-                        {member.email ? ` (${member.email})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {newType === 'group' && (
-                <div className="mb-4 max-h-44 overflow-y-auto border border-stone/35 rounded-xl p-2">
-                  {memberOptions.length === 0 ? (
-                    <p className="text-xs text-bark/45 px-2 py-3">
-                      No other members are in this tree yet.
-                    </p>
-                  ) : (
-                    memberOptions.map((member) => {
-                      const selected = selectedGroupMemberIds.includes(member.id);
-                      return (
-                        <button
-                          type="button"
-                          key={member.id}
-                          onClick={() => toggleGroupMember(member.id)}
-                          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                            selected ? 'bg-moss/15 text-moss' : 'hover:bg-stone/35 text-earth'
-                          }`}
-                        >
-                          <span className="truncate">{member.name}</span>
-                          {selected ? <Check className="w-4 h-4" /> : null}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {newType !== 'direct' && (
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(event) => setNewName(event.target.value)}
-                  placeholder={
-                    newType === 'tree' ? 'Tree chat name (optional)' : 'Group name (optional)'
-                  }
-                  className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 text-sm text-earth placeholder:text-bark/30 mb-4"
-                />
-              )}
-
-              <p className="text-xs text-bark/40 mb-4">
-                {newType === 'direct'
-                  ? 'Start a one-to-one conversation.'
-                  : newType === 'group'
-                    ? 'Create a group with selected members.'
-                    : 'Create one shared conversation for everyone in this tree.'}
-              </p>
-
-              {formError ? <p className="text-xs text-error mb-4">{formError}</p> : null}
-
-              <button
-                onClick={createConversation}
-                disabled={creating}
-                className="w-full py-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl font-medium shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+          {newType === 'direct' ? (
+            <div>
+              <select
+                value={selectedDmMemberId}
+                onChange={(event) => setSelectedDmMemberId(event.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 text-sm text-earth bg-white"
               >
-                {creating ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <MessageCircle className="w-4 h-4" />
-                    {newType === 'direct'
-                      ? 'Start DM'
-                      : newType === 'group'
-                        ? 'Create Group'
-                        : 'Create Tree Chat'}
-                  </>
-                )}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                <option value="">Select a family member</option>
+                {memberOptions.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                    {member.email ? ` (${member.email})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {newType === 'group' ? (
+            <div className="max-h-44 overflow-y-auto border border-stone/35 rounded-xl p-2">
+              {memberOptions.length === 0 ? (
+                <p className="text-xs text-bark/45 px-2 py-3">
+                  No other members are in this tree yet.
+                </p>
+              ) : (
+                memberOptions.map((member) => {
+                  const selected = selectedGroupMemberIds.includes(member.id);
+                  return (
+                    <button
+                      type="button"
+                      key={member.id}
+                      onClick={() => toggleGroupMember(member.id)}
+                      className={`tap-target w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
+                        selected ? 'bg-moss/15 text-moss' : 'hover:bg-stone/35 text-earth'
+                      }`}
+                    >
+                      <span className="truncate">{member.name}</span>
+                      {selected ? <Check className="w-4 h-4" /> : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          ) : null}
+
+          {newType !== 'direct' ? (
+            <input
+              type="text"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              placeholder={
+                newType === 'tree' ? 'Tree chat name (optional)' : 'Group name (optional)'
+              }
+              className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 text-sm text-earth placeholder:text-bark/30"
+            />
+          ) : null}
+
+          <p className="text-xs text-bark/40">
+            {newType === 'direct'
+              ? 'Start a one-to-one conversation.'
+              : newType === 'group'
+                ? 'Create a group with selected members.'
+                : 'Create one shared conversation for everyone in this tree.'}
+          </p>
+
+          {formError ? <p className="text-xs text-error">{formError}</p> : null}
+
+          <button
+            type="submit"
+            disabled={creating}
+            className="tap-target w-full py-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl font-medium shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {creating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <MessageCircle className="w-4 h-4" />
+                {newType === 'direct'
+                  ? 'Start DM'
+                  : newType === 'group'
+                    ? 'Create Group'
+                    : 'Create Tree Chat'}
+              </>
+            )}
+          </button>
+        </form>
+      </MobileActionSheet>
     </div>
   );
 }

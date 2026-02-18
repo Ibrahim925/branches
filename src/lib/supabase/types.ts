@@ -7,6 +7,16 @@ export type Database = {
                     email: string | null;
                     phone: string | null;
                     display_name: string | null;
+                    first_name: string | null;
+                    last_name: string | null;
+                    avatar_url: string | null;
+                    avatar_zoom: number | null;
+                    avatar_focus_x: number | null;
+                    avatar_focus_y: number | null;
+                    gender: string | null;
+                    bio: string | null;
+                    birthdate: string | null;
+                    onboarding_completed: boolean;
                     created_at: string;
                     updated_at: string;
                 };
@@ -15,6 +25,16 @@ export type Database = {
                     email?: string | null;
                     phone?: string | null;
                     display_name?: string | null;
+                    first_name?: string | null;
+                    last_name?: string | null;
+                    avatar_url?: string | null;
+                    avatar_zoom?: number | null;
+                    avatar_focus_x?: number | null;
+                    avatar_focus_y?: number | null;
+                    gender?: string | null;
+                    bio?: string | null;
+                    birthdate?: string | null;
+                    onboarding_completed?: boolean;
                     created_at?: string;
                     updated_at?: string;
                 };
@@ -23,6 +43,16 @@ export type Database = {
                     email?: string | null;
                     phone?: string | null;
                     display_name?: string | null;
+                    first_name?: string | null;
+                    last_name?: string | null;
+                    avatar_url?: string | null;
+                    avatar_zoom?: number | null;
+                    avatar_focus_x?: number | null;
+                    avatar_focus_y?: number | null;
+                    gender?: string | null;
+                    bio?: string | null;
+                    birthdate?: string | null;
+                    onboarding_completed?: boolean;
                     created_at?: string;
                     updated_at?: string;
                 };
@@ -307,6 +337,194 @@ export type Database = {
                     created_at?: string;
                     expires_at?: string;
                 };
+            };
+            memories: {
+                Row: {
+                    id: string;
+                    graph_id: string;
+                    node_id: string | null;
+                    author_id: string;
+                    type: 'story' | 'photo' | 'document';
+                    title: string | null;
+                    content: string | null;
+                    media_url: string | null;
+                    media_type: string | null;
+                    media_zoom: number | null;
+                    media_focus_x: number | null;
+                    media_focus_y: number | null;
+                    event_date: string | null;
+                    tags: string[];
+                    created_at: string;
+                    updated_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    graph_id: string;
+                    node_id?: string | null;
+                    author_id: string;
+                    type: 'story' | 'photo' | 'document';
+                    title?: string | null;
+                    content?: string | null;
+                    media_url?: string | null;
+                    media_type?: string | null;
+                    media_zoom?: number | null;
+                    media_focus_x?: number | null;
+                    media_focus_y?: number | null;
+                    event_date?: string | null;
+                    tags?: string[];
+                    created_at?: string;
+                    updated_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    graph_id?: string;
+                    node_id?: string | null;
+                    author_id?: string;
+                    type?: 'story' | 'photo' | 'document';
+                    title?: string | null;
+                    content?: string | null;
+                    media_url?: string | null;
+                    media_type?: string | null;
+                    media_zoom?: number | null;
+                    media_focus_x?: number | null;
+                    media_focus_y?: number | null;
+                    event_date?: string | null;
+                    tags?: string[];
+                    created_at?: string;
+                    updated_at?: string;
+                };
+            };
+            memory_comments: {
+                Row: {
+                    id: string;
+                    memory_id: string;
+                    author_id: string;
+                    content: string;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    memory_id: string;
+                    author_id: string;
+                    content: string;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    memory_id?: string;
+                    author_id?: string;
+                    content?: string;
+                    created_at?: string;
+                };
+            };
+            memory_likes: {
+                Row: {
+                    id: string;
+                    memory_id: string;
+                    user_id: string;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    memory_id: string;
+                    user_id: string;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    memory_id?: string;
+                    user_id?: string;
+                    created_at?: string;
+                };
+            };
+            memory_subjects: {
+                Row: {
+                    id: string;
+                    memory_id: string;
+                    subject_user_id: string | null;
+                    subject_node_id: string | null;
+                    tagged_by: string;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    memory_id: string;
+                    subject_user_id?: string | null;
+                    subject_node_id?: string | null;
+                    tagged_by: string;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    memory_id?: string;
+                    subject_user_id?: string | null;
+                    subject_node_id?: string | null;
+                    tagged_by?: string;
+                    created_at?: string;
+                };
+            };
+        };
+        Functions: {
+            accept_invite: {
+                Args: {
+                    _token: string;
+                };
+                Returns: Array<{
+                    graph_id: string;
+                    node_id: string | null;
+                }>;
+            };
+            get_invite_preview: {
+                Args: {
+                    _token: string;
+                };
+                Returns: Array<{
+                    invite_id: string;
+                    graph_id: string;
+                    graph_name: string;
+                    role: 'admin' | 'editor' | 'viewer';
+                    status: 'pending' | 'accepted' | 'expired';
+                    expires_at: string;
+                    is_expired: boolean;
+                    invite_claimed_by: string | null;
+                    node_id: string | null;
+                    node_first_name: string | null;
+                    node_last_name: string | null;
+                    node_claimed_by: string | null;
+                }>;
+            };
+            claim_tree_node: {
+                Args: {
+                    _graph_id: string;
+                    _node_id: string;
+                };
+                Returns: string;
+            };
+            unclaim_tree_node: {
+                Args: {
+                    _graph_id: string;
+                    _node_id: string;
+                };
+                Returns: string;
+            };
+            create_memory_with_subjects: {
+                Args: {
+                    _graph_id: string;
+                    _node_id: string | null;
+                    _type: string;
+                    _title: string;
+                    _content: string | null;
+                    _media_url: string | null;
+                    _media_type: string | null;
+                    _event_date: string | null;
+                    _tags: string[] | null;
+                    _subject_user_ids: string[] | null;
+                    _subject_node_ids: string[] | null;
+                    _media_zoom?: number | null;
+                    _media_focus_x?: number | null;
+                    _media_focus_y?: number | null;
+                };
+                Returns: string;
             };
         };
     };

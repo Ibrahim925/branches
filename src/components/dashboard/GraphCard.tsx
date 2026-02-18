@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { TreePine, Users, Crown, Pencil, Eye } from 'lucide-react';
+import { TreePine, Crown, Pencil, Eye } from 'lucide-react';
 import Link from 'next/link';
 
 const roleConfig = {

@@ -50,6 +50,7 @@ export interface FamilyTreeRenderEdge {
   id: string;
   kind: RelationshipType;
   path: string;
+  nodeIds: string[];
 }
 
 export interface FamilyTreeLayoutResult {
@@ -500,6 +501,7 @@ export function buildFamilyTreeLayout(
         [leftNode.x + FAMILY_TREE_NODE_WIDTH, lineY],
         [rightNode.x, lineY],
       ]),
+      nodeIds: [leftNode.id, rightNode.id],
     });
 
     renderedPartnerships.add(pairKey);
@@ -683,6 +685,7 @@ export function buildFamilyTreeLayout(
           [leftParent.centerX, mergeY],
           [midX, mergeY],
         ]),
+        nodeIds: [leftParent.id],
       });
 
       renderEdges.push({
@@ -693,6 +696,7 @@ export function buildFamilyTreeLayout(
           [rightParent.centerX, mergeY],
           [midX, mergeY],
         ]),
+        nodeIds: [rightParent.id],
       });
 
       if (routedGroup.childNodes.length === 1) {
@@ -708,6 +712,7 @@ export function buildFamilyTreeLayout(
             [childNode.centerX, branchY],
             [childNode.centerX, childNode.y],
           ]),
+          nodeIds: [leftParent.id, rightParent.id, childNode.id],
         });
 
         return;
@@ -720,6 +725,7 @@ export function buildFamilyTreeLayout(
           [midX, mergeY],
           [midX, branchY],
         ]),
+        nodeIds: [leftParent.id, rightParent.id],
       });
 
       renderEdges.push({
@@ -729,6 +735,7 @@ export function buildFamilyTreeLayout(
           [routedGroup.horizontalMinX, branchY],
           [routedGroup.horizontalMaxX, branchY],
         ]),
+        nodeIds: routedGroup.childNodes.map((child) => child.id),
       });
 
       routedGroup.childNodes.forEach((childNode) => {
@@ -739,6 +746,7 @@ export function buildFamilyTreeLayout(
             [childNode.centerX, branchY],
             [childNode.centerX, childNode.y],
           ]),
+          nodeIds: [childNode.id],
         });
       });
 
@@ -761,6 +769,7 @@ export function buildFamilyTreeLayout(
           [childNode.centerX, branchY],
           [childNode.centerX, childNode.y],
         ]),
+        nodeIds: [parentNode.id, childNode.id],
       });
 
       return;
@@ -773,6 +782,7 @@ export function buildFamilyTreeLayout(
         [parentNode.centerX, parentNode.y + FAMILY_TREE_NODE_HEIGHT],
         [parentNode.centerX, branchY],
       ]),
+      nodeIds: [parentNode.id],
     });
 
     renderEdges.push({
@@ -782,6 +792,7 @@ export function buildFamilyTreeLayout(
         [routedGroup.horizontalMinX, branchY],
         [routedGroup.horizontalMaxX, branchY],
       ]),
+      nodeIds: routedGroup.childNodes.map((child) => child.id),
     });
 
     routedGroup.childNodes.forEach((childNode) => {
@@ -792,6 +803,7 @@ export function buildFamilyTreeLayout(
           [childNode.centerX, branchY],
           [childNode.centerX, childNode.y],
         ]),
+        nodeIds: [childNode.id],
       });
     });
   });

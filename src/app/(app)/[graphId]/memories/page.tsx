@@ -6,9 +6,11 @@ import { createClient } from '@/lib/supabase/client';
 import { MemoryFeed } from '@/components/memories/MemoryFeed';
 import { CreateMemoryModal } from '@/components/memories/CreateMemoryModal';
 import { StoryViewerModal } from '@/components/memories/StoryViewerModal';
+import { MobilePrimaryAction } from '@/components/system/MobilePrimaryAction';
+import { Skeleton } from '@/components/system/Skeleton';
 import { extractMarkdownImageUrls } from '@/utils/markdown';
 import { motion } from 'framer-motion';
-import { Filter, Loader2, Plus } from 'lucide-react';
+import { Filter, Plus } from 'lucide-react';
 
 type MemoryType = 'story' | 'photo' | 'document';
 
@@ -494,7 +496,7 @@ export default function MemoriesPage() {
   ];
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-4 py-8 pb-24 md:pb-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-semibold text-earth tracking-tight">
@@ -508,7 +510,7 @@ export default function MemoriesPage() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setShowCreate(true)}
-          className="px-5 py-2.5 bg-gradient-to-r from-moss to-leaf text-white rounded-xl text-sm font-medium shadow-md shadow-moss/15 hover:shadow-lg transition-shadow flex items-center gap-2"
+          className="hidden md:inline-flex px-5 py-2.5 bg-gradient-to-r from-moss to-leaf text-white rounded-xl text-sm font-medium shadow-md shadow-moss/15 hover:shadow-lg transition-shadow items-center gap-2"
         >
           <Plus className="w-4 h-4" />
           Add Memory
@@ -536,8 +538,23 @@ export default function MemoriesPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="w-6 h-6 text-moss animate-spin" />
+        <div className="space-y-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="rounded-2xl border border-stone/35 bg-white/72 p-4 md:p-5"
+            >
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-3 w-14 rounded-md" />
+                <Skeleton className="h-3 w-20 rounded-md" />
+                <Skeleton className="h-3 w-16 rounded-md" />
+              </div>
+              <Skeleton className="mt-3 h-5 w-1/2 rounded-md" />
+              <Skeleton className="mt-3 aspect-[4/3] w-full rounded-xl" />
+              <Skeleton className="mt-3 h-4 w-full rounded-md" />
+              <Skeleton className="mt-2 h-4 w-3/4 rounded-md" />
+            </div>
+          ))}
         </div>
       ) : (
         <MemoryFeed
@@ -562,6 +579,14 @@ export default function MemoriesPage() {
           onCreated={loadMemories}
         />
       )}
+
+      <MobilePrimaryAction
+        label="Add memory"
+        ariaLabel="Add memory"
+        icon={<Plus className="w-6 h-6" />}
+        onPress={() => setShowCreate(true)}
+        hidden={showCreate}
+      />
 
       <StoryViewerModal
         story={selectedStory}

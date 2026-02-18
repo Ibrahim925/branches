@@ -20,7 +20,7 @@
   --color-error: #C97064;
 
   /* Fonts */
-  --font-sans: "Inter", sans-serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 
   /* Animation timings */
   --animate-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -29,20 +29,171 @@
 }
 
 :root {
-  --background: #ffffff;
+  --background: #F5F1E8;
   --foreground: #3A3A3A;
+  --app-vh: 100vh;
+  --keyboard-inset: 0px;
+  --keyboard-open: 0;
+  --mobile-tab-bar-offset: 0px;
+  --tap-target-min: 44px;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+}
+
+:root[data-app-theme='dusk'] {
+  --background: #EFE9DE;
+  --foreground: #2E2A25;
+}
+
+html,
+body {
+  min-height: 100%;
+  height: 100%;
 }
 
 body {
+  margin: 0;
+  min-height: var(--app-vh);
   background: var(--background);
   color: var(--foreground);
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+html.native-ios,
+html.native-ios body {
+  overscroll-behavior-y: none;
+}
+
+.native-ios body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.native-ios .text-xs {
+  font-size: 0.8125rem;
+}
+
+.native-ios button,
+.native-ios [role='button'],
+.native-ios .tap-target {
+  min-width: var(--tap-target-min);
+  min-height: var(--tap-target-min);
+  touch-action: manipulation;
+}
+
+.safe-top {
+  padding-top: var(--safe-area-top);
+}
+
+.safe-bottom {
+  padding-bottom: var(--safe-area-bottom);
+}
+
+.safe-left {
+  padding-left: var(--safe-area-left);
+}
+
+.safe-right {
+  padding-right: var(--safe-area-right);
+}
+
+.safe-bottom-keyboard {
+  padding-bottom: calc(
+    var(--safe-area-bottom) + var(--mobile-tab-bar-offset) + var(--keyboard-inset)
+  );
+}
+
+.native-ios .safe-bottom-keyboard {
+  padding-bottom: calc(
+    var(--safe-area-bottom) + var(--mobile-tab-bar-offset) + var(--keyboard-inset)
+  );
+}
+
+.tap-target {
+  min-width: var(--tap-target-min);
+  min-height: var(--tap-target-min);
+}
+
+.mobile-fab {
+  transform: translateY(0);
+}
+
+.ios-gradient-fix {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+html[data-keyboard-open='true'] .mobile-fab:not([data-allow-with-keyboard='true']) {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+}
+
+.mobile-sheet-body {
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  padding-bottom: calc(var(--safe-area-bottom) + var(--keyboard-inset) + 1rem);
+}
+
+.edge-action {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.group:hover .edge-action,
+.group:focus-within .edge-action,
+.edge-action[data-visible='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Prevent iOS Safari/WKWebView auto-zoom when focusing small form fields. */
+@supports (-webkit-touch-callout: none) {
+  @media (hover: none) and (pointer: coarse) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+}
+
+.native-ios input,
+.native-ios textarea,
+.native-ios select {
+  font-size: 16px !important;
+  line-height: 1.35;
 }
 
 @keyframes shimmer {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  .motion-safe-only {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
 }

@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { Calendar, UserRound } from 'lucide-react';
 
-import { ProfileEditorForm } from '@/components/profile/ProfileEditorForm';
 import { createClient } from '@/lib/supabase/server';
 import { formatDateOnly } from '@/utils/dateOnly';
 import { buildImageCropStyle } from '@/utils/imageCrop';
@@ -208,7 +207,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="mb-8 rounded-2xl border border-stone/40 bg-white/75 p-6">
         <div className="flex items-start gap-4">
-          <div className="w-20 h-20 rounded-full overflow-hidden border border-stone/45">
+          <div className="w-20 h-20 shrink-0 aspect-square rounded-full overflow-hidden border border-stone/45">
             {subjectProfile.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -255,23 +254,22 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
             {subjectProfile.email ? (
               <p className="text-xs text-bark/45 mt-2">{subjectProfile.email}</p>
             ) : null}
+            {isSelf ? (
+              <div className="mt-3">
+                <Link
+                  href="/profile/settings"
+                  className="inline-flex items-center rounded-xl border border-stone/45 px-3 py-2 text-xs font-medium text-earth transition-colors hover:bg-stone/20"
+                >
+                  Edit Profile
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
         {subjectProfile.bio ? (
           <p className="text-sm text-earth/85 mt-4 leading-relaxed">{subjectProfile.bio}</p>
         ) : null}
       </div>
-
-      {isSelf ? (
-        <div className="mb-8">
-          <ProfileEditorForm
-            profile={subjectProfile as ProfileRow}
-            title="Edit Your Profile"
-            description="Changes here update your claimed identity across trees."
-            submitLabel="Save Changes"
-          />
-        </div>
-      ) : null}
 
       {sharedGraphIds.length === 0 ? (
         <div className="rounded-2xl border border-stone/35 bg-white/70 p-6 text-sm text-bark/55">

@@ -1,6 +1,16 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+function normalizeNextPath(nextPath: string | null, fallback = '/dashboard') {
+    if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
+        return fallback;
+    }
+    if (nextPath === '/onboarding' || nextPath.startsWith('/onboarding/')) {
+        return fallback;
+    }
+    return nextPath;
+}
+
 export async function updateSession(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
         request,
@@ -62,16 +72,7 @@ export async function updateSession(request: NextRequest) {
         const onboardingCompleted = hasProfile
             ? Boolean(profileRow?.onboarding_completed)
             : true;
-        const safeNext = (() => {
-            const nextPath = request.nextUrl.searchParams.get('next');
-            if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
-                return '/dashboard';
-            }
-            if (nextPath === '/onboarding' || nextPath.startsWith('/onboarding/')) {
-                return '/dashboard';
-            }
-            return nextPath;
-        })();
+        const safeNext = normalizeNextPath(request.nextUrl.searchParams.get('next'));
 
         const isOnboardingRoute = pathname === '/onboarding' || pathname.startsWith('/onboarding/');
         const isAppRoute =

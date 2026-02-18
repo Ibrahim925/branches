@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { motion, AnimatePresence } from 'framer-motion';
+import { nativeBridge } from '@/lib/native';
 import { MarkdownArticle } from '@/components/memories/MarkdownArticle';
+import { MobileActionSheet } from '@/components/system/MobileActionSheet';
 import { buildImageCropStyle, resolveImageCrop } from '@/utils/imageCrop';
 import { extractFirstMarkdownImage } from '@/utils/markdown';
 import {
@@ -114,6 +115,10 @@ export function CreateMemoryModal({
   const [uploading, setUploading] = useState(false);
   const [insertingStoryImage, setInsertingStoryImage] = useState(false);
   const [error, setError] = useState('');
+  const draftStorageKey = useMemo(
+    () => `branches:draft:memory:${graphId}:${nodeId || 'none'}`,
+    [graphId, nodeId]
+  );
 
   const preselectedSubjectIdsKey = useMemo(
     () =>
@@ -283,8 +288,60 @@ export function CreateMemoryModal({
     supabase,
   ]);
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const rawDraft = window.localStorage.getItem(draftStorageKey);
+    if (!rawDraft) return;
+
+    try {
+      const parsed = JSON.parse(rawDraft) as {
+        type?: 'story' | 'photo';
+        title?: string;
+        content?: string;
+        eventDate?: string;
+        tags?: string;
+      };
+
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (parsed.type) setType(parsed.type);
+      if (typeof parsed.title === 'string') setTitle(parsed.title);
+      if (typeof parsed.content === 'string') setContent(parsed.content);
+      if (typeof parsed.eventDate === 'string') setEventDate(parsed.eventDate);
+      if (typeof parsed.tags === 'string') setTags(parsed.tags);
+    } catch {
+      window.localStorage.removeItem(draftStorageKey);
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const hasDraft =
+      Boolean(title.trim()) ||
+      Boolean(content.trim()) ||
+      Boolean(eventDate) ||
+      Boolean(tags.trim()) ||
+      Boolean(file);
+
+    if (!hasDraft) {
+      window.localStorage.removeItem(draftStorageKey);
+      return;
+    }
+
+    window.localStorage.setItem(
+      draftStorageKey,
+      JSON.stringify({
+        type,
+        title,
+        content,
+        eventDate,
+        tags,
+      })
+    );
+  }, [content, draftStorageKey, eventDate, file, tags, title, type]);
+
+  function applyPhotoFile(f: File) {
     if (!f) return;
     setFile(f);
     setPhotoZoom(1);
@@ -295,6 +352,24 @@ export function CreateMemoryModal({
       reader.onload = (ev) => setPreview(ev.target?.result as string);
       reader.readAsDataURL(f);
     }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    applyPhotoFile(f);
+  }
+
+  async function handlePickPhoto() {
+    if (nativeBridge.isNativeApp()) {
+      const pickedFile = await nativeBridge.pickImage();
+      if (pickedFile) {
+        applyPhotoFile(pickedFile);
+      }
+      return;
+    }
+
+    fileRef.current?.click();
   }
 
   function restoreStorySelection(start: number, end = start) {
@@ -422,6 +497,11 @@ export function CreateMemoryModal({
       return;
     }
 
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setError('You are offline. Save this draft and retry when connected.');
+      return;
+    }
+
     setUploading(true);
     setError('');
 
@@ -529,6 +609,9 @@ export function CreateMemoryModal({
     }
 
     setUploading(false);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(draftStorageKey);
+    }
     onCreated();
     onClose();
   }
@@ -548,37 +631,15 @@ export function CreateMemoryModal({
   });
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto"
-        >
-          <form onSubmit={handleSubmit}>
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 pb-4">
-              <h2 className="text-lg font-semibold text-earth">
-                Add Memory
-              </h2>
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 hover:bg-stone/50 rounded-lg transition-colors"
-              >
-                <X className="w-4 h-4 text-bark/40" />
-              </button>
-            </div>
-
-            <div className="px-6 space-y-4">
+    <MobileActionSheet
+      open
+      onClose={onClose}
+      title="Add Memory"
+      ariaLabel="Add memory modal"
+      className="md:max-w-lg"
+    >
+      <form onSubmit={handleSubmit}>
+        <div className="mobile-sheet-body pt-4 space-y-4">
               {/* Type selector */}
               <div className="flex gap-2">
                 {types.map((t) => (
@@ -633,7 +694,7 @@ export function CreateMemoryModal({
                           title="Heading 1"
                           aria-label="Heading 1"
                           onClick={() => prependToCurrentStoryLine('# ')}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <Heading1 className="w-4 h-4" />
                         </button>
@@ -642,7 +703,7 @@ export function CreateMemoryModal({
                           title="Heading 2"
                           aria-label="Heading 2"
                           onClick={() => prependToCurrentStoryLine('## ')}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <Heading2 className="w-4 h-4" />
                         </button>
@@ -651,7 +712,7 @@ export function CreateMemoryModal({
                           title="Heading 3"
                           aria-label="Heading 3"
                           onClick={() => prependToCurrentStoryLine('### ')}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <Heading3 className="w-4 h-4" />
                         </button>
@@ -660,7 +721,7 @@ export function CreateMemoryModal({
                           title="Bold"
                           aria-label="Bold"
                           onClick={() => wrapStorySelection('**', '**', 'bold text')}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <Bold className="w-4 h-4" />
                         </button>
@@ -669,7 +730,7 @@ export function CreateMemoryModal({
                           title="Italic"
                           aria-label="Italic"
                           onClick={() => wrapStorySelection('*', '*', 'italic text')}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <Italic className="w-4 h-4" />
                         </button>
@@ -678,7 +739,7 @@ export function CreateMemoryModal({
                           title="Bullet list"
                           aria-label="Bullet list"
                           onClick={() => prependToCurrentStoryLine('- ')}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <List className="w-4 h-4" />
                         </button>
@@ -687,7 +748,7 @@ export function CreateMemoryModal({
                           title="Numbered list"
                           aria-label="Numbered list"
                           onClick={() => prependToCurrentStoryLine('1. ')}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <ListOrdered className="w-4 h-4" />
                         </button>
@@ -696,7 +757,7 @@ export function CreateMemoryModal({
                           title="Quote"
                           aria-label="Quote"
                           onClick={() => prependToCurrentStoryLine('> ')}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <Quote className="w-4 h-4" />
                         </button>
@@ -707,7 +768,7 @@ export function CreateMemoryModal({
                           onClick={() =>
                             wrapStorySelection('[', '](https://example.com)', 'link text')
                           }
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <LinkIcon className="w-4 h-4" />
                         </button>
@@ -718,7 +779,7 @@ export function CreateMemoryModal({
                           onClick={() =>
                             wrapStorySelection('```\n', '\n```', 'const message = "Hello";')
                           }
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors"
                         >
                           <Code2 className="w-4 h-4" />
                         </button>
@@ -728,7 +789,7 @@ export function CreateMemoryModal({
                           aria-label="Insert image"
                           onClick={() => storyImageRef.current?.click()}
                           disabled={insertingStoryImage}
-                          className="w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors disabled:opacity-50"
+                          className="tap-target w-8 h-8 rounded-lg text-bark/60 hover:text-moss hover:bg-white/85 flex items-center justify-center transition-colors disabled:opacity-50"
                         >
                           {insertingStoryImage ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -884,7 +945,7 @@ export function CreateMemoryModal({
                           setPhotoFocusX(50);
                           setPhotoFocusY(50);
                         }}
-                        className="absolute top-2 right-2 p-1.5 bg-black/40 rounded-full"
+                        className="tap-target absolute top-2 right-2 p-1.5 bg-black/40 rounded-full"
                       >
                         <X className="w-3 h-3 text-white" />
                       </button>
@@ -892,7 +953,7 @@ export function CreateMemoryModal({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => fileRef.current?.click()}
+                      onClick={() => void handlePickPhoto()}
                       className="w-full py-8 border-2 border-dashed border-stone rounded-xl text-bark/40 hover:border-moss/40 hover:text-moss transition-colors flex flex-col items-center gap-2"
                     >
                       <Upload className="w-6 h-6" />
@@ -1003,12 +1064,11 @@ export function CreateMemoryModal({
               )}
             </div>
 
-            {/* Footer */}
-            <div className="p-6 pt-4">
+        <div className="mobile-sheet-body pt-2">
               <button
                 type="submit"
                 disabled={uploading}
-                className="w-full py-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl font-medium shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+                className="tap-target w-full py-3 bg-gradient-to-r from-moss to-leaf text-white rounded-xl font-medium shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {uploading ? (
                   <>
@@ -1019,10 +1079,8 @@ export function CreateMemoryModal({
                   'Save Memory'
                 )}
               </button>
-            </div>
-          </form>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+        </div>
+      </form>
+    </MobileActionSheet>
   );
 }

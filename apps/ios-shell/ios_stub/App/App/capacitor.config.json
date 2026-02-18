@@ -1,0 +1,26 @@
+{
+	"appId": "com.branches.familytree",
+	"appName": "Branches",
+	"webDir": "../../out",
+	"server": {
+		"url": "http://localhost:3000",
+		"cleartext": true
+	},
+	"ios": {
+		"contentInset": "always",
+		"limitsNavigationsToAppBoundDomains": false,
+		"scheme": "branches"
+	},
+	"plugins": {
+		"App": {
+			"iosScheme": "branches"
+		}
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"CAPBrowserPlugin",
+		"CAPCameraPlugin",
+		"ClipboardPlugin",
+		"SharePlugin"
+	]
+}

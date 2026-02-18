@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
-import { motion } from 'framer-motion';
 import {
   X,
   Calendar,
@@ -22,6 +22,7 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { CreateMemoryModal } from '@/components/memories/CreateMemoryModal';
+import { BottomSheet } from '@/components/system/BottomSheet';
 import { formatDateOnly, getDateOnlyYear } from '@/utils/dateOnly';
 import { buildStoryExcerpt } from '@/utils/markdown';
 import { buildImageCropStyle } from '@/utils/imageCrop';
@@ -139,7 +140,17 @@ export function NodeDetailSidebar({
   const [loadingClaimStatus, setLoadingClaimStatus] = useState(true);
   const [claimingNode, setClaimingNode] = useState(false);
   const [unclaimingNode, setUnclaimingNode] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(true);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia('(min-width: 768px)').matches
+      : false
+  );
   const supabase = useMemo(() => createClient(), []);
+
+  const requestClose = useCallback(() => {
+    setSheetOpen(false);
+  }, []);
 
   const formatProfileName = useCallback(
     (profile: Pick<MemoryAuthorProfile, 'display_name' | 'email'>) =>
@@ -420,6 +431,17 @@ export function NodeDetailSidebar({
     void loadClaimStatus();
   }, [loadClaimStatus]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    const onChange = () => setIsDesktopViewport(mediaQuery.matches);
+    onChange();
+    mediaQuery.addEventListener('change', onChange);
+
+    return () => mediaQuery.removeEventListener('change', onChange);
+  }, []);
+
   function handleAvatarFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -518,7 +540,7 @@ export function NodeDetailSidebar({
     }
 
     setDeleting(false);
-    onClose();
+    requestClose();
     onUpdate?.();
   }
 
@@ -796,39 +818,73 @@ export function NodeDetailSidebar({
     !loadingClaimStatus;
 
   if (!node) {
+    if (isDesktopViewport) {
+      return (
+        <AnimatePresence mode="wait" onExitComplete={onClose}>
+          {sheetOpen ? (
+            <>
+              <motion.button
+                type="button"
+                aria-label="Dismiss details"
+                onClick={requestClose}
+                className="fixed inset-0 z-[74] hidden bg-black/12 backdrop-blur-[1px] md:block"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              />
+
+              <motion.aside
+                role="dialog"
+                aria-modal="true"
+                aria-label="Person details"
+                className="fixed right-0 top-0 z-[75] hidden h-[var(--app-vh)] w-full max-w-[28rem] border-l border-stone/35 bg-white/95 shadow-[0_0_48px_rgba(36,24,10,0.2)] md:flex md:flex-col"
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+              >
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-moss" />
+                </div>
+              </motion.aside>
+            </>
+          ) : null}
+        </AnimatePresence>
+      );
+    }
+
     return (
-      <motion.div
-        initial={{ x: 400, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: 400, opacity: 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="fixed right-0 top-0 h-full w-96 bg-white/95 backdrop-blur-xl shadow-2xl border-l border-stone/30 z-30 p-6 flex items-center justify-center"
+      <BottomSheet
+        open={sheetOpen}
+        onClose={requestClose}
+        onExited={onClose}
+        ariaLabel="Person details"
+        snapPoints={[0.4, 0.9]}
+        initialSnap={0}
       >
-        <Loader2 className="w-6 h-6 animate-spin text-moss" />
-      </motion.div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-moss" />
+        </div>
+      </BottomSheet>
     );
   }
 
-  return (
-    <motion.div
-      initial={{ x: 400, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 400, opacity: 0 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="fixed right-0 top-0 h-full w-96 bg-white/95 backdrop-blur-xl shadow-2xl border-l border-stone/30 z-30 overflow-y-auto"
-    >
+  const panelContent = (
+    <>
       {/* Header */}
-      <div className="sticky top-0 bg-white/90 backdrop-blur-sm p-4 border-b border-stone/30 flex items-center justify-between z-10">
+      <div className="sticky top-0 bg-white/90 backdrop-blur-sm px-5 py-4 border-b border-stone/30 flex items-center justify-between z-10">
         <h3 className="text-lg font-semibold text-earth">Person Details</h3>
         <button
-          onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-stone/40 transition-colors"
+          type="button"
+          onClick={requestClose}
+          className="tap-target w-8 h-8 flex items-center justify-center rounded-lg hover:bg-stone/40 transition-colors"
+          aria-label="Close person details"
         >
           <X className="w-4 h-4 text-bark/40" />
         </button>
       </div>
 
-      <div className="p-6">
+      <div className="px-5 pt-6 pb-4">
         {/* Avatar */}
         <div className="flex flex-col items-center mb-6">
           <div
@@ -1369,6 +1425,53 @@ export function NodeDetailSidebar({
           }}
         />
       )}
-    </motion.div>
+    </>
+  );
+
+  if (isDesktopViewport) {
+    return (
+      <AnimatePresence mode="wait" onExitComplete={onClose}>
+        {sheetOpen ? (
+          <>
+            <motion.button
+              type="button"
+              aria-label="Dismiss details"
+              onClick={requestClose}
+              className="fixed inset-0 z-[74] hidden bg-black/12 backdrop-blur-[1px] md:block"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+
+            <motion.aside
+              role="dialog"
+              aria-modal="true"
+              aria-label="Person details"
+              className="fixed right-0 top-0 z-[75] hidden h-[var(--app-vh)] w-full max-w-[28rem] overflow-y-auto border-l border-stone/35 bg-white/95 shadow-[0_0_48px_rgba(36,24,10,0.2)] md:block"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+            >
+              {panelContent}
+            </motion.aside>
+          </>
+        ) : null}
+      </AnimatePresence>
+    );
+  }
+
+  return (
+    <BottomSheet
+      open={sheetOpen}
+      onClose={requestClose}
+      onExited={onClose}
+      ariaLabel="Person details"
+      snapPoints={[0.4, 0.9]}
+      initialSnap={0}
+      contentClassName="px-0 pb-[var(--safe-area-bottom)]"
+    >
+      {panelContent}
+    </BottomSheet>
   );
 }

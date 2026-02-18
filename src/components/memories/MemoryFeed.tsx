@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { buildStoryExcerpt, extractFirstMarkdownImage } from '@/utils/markdown';
 import { buildImageCropStyle } from '@/utils/imageCrop';
+import { MobileActionSheet } from '@/components/system/MobileActionSheet';
 
 type Memory = {
   id: string;
@@ -83,6 +84,8 @@ export function MemoryFeed({
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentErrors, setCommentErrors] = useState<Record<string, string | null>>({});
+  const [pendingDeleteMemory, setPendingDeleteMemory] = useState<Memory | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const typeIcons = {
     story: BookOpen,
@@ -106,6 +109,19 @@ export function MemoryFeed({
 
     setCommentDrafts((current) => ({ ...current, [memoryId]: '' }));
     setCommentErrors((current) => ({ ...current, [memoryId]: null }));
+  }
+
+  async function confirmDeleteMemory() {
+    if (!pendingDeleteMemory || !onDeleteMemory) return;
+
+    const deletionError = await onDeleteMemory(pendingDeleteMemory);
+    if (deletionError) {
+      setDeleteError(deletionError);
+      return;
+    }
+
+    setDeleteError(null);
+    setPendingDeleteMemory(null);
   }
 
   if (memories.length === 0) {
@@ -268,7 +284,7 @@ export function MemoryFeed({
                     void onToggleLike(memory.id);
                   }}
                   disabled={likeLoading}
-                  className={`flex items-center gap-1.5 text-xs transition-colors ${
+                  className={`tap-target flex items-center gap-1.5 text-xs transition-colors ${
                     memory.isLiked ? 'text-error' : 'text-bark/40 hover:text-error'
                   }`}
                 >
@@ -289,7 +305,7 @@ export function MemoryFeed({
                       [memory.id]: !current[memory.id],
                     }));
                   }}
-                  className="flex items-center gap-1.5 text-xs text-bark/40 hover:text-moss transition-colors"
+                  className="tap-target flex items-center gap-1.5 text-xs text-bark/40 hover:text-moss transition-colors"
                 >
                   <MessageCircle className="w-3.5 h-3.5" />
                   {memory.comment_count}
@@ -300,18 +316,11 @@ export function MemoryFeed({
                     type="button"
                     onClick={async (event) => {
                       event.stopPropagation();
-                      if (!onDeleteMemory) return;
-                      const confirmed = window.confirm(
-                        'Delete this memory? This action cannot be undone.'
-                      );
-                      if (!confirmed) return;
-                      const deletionError = await onDeleteMemory(memory);
-                      if (deletionError) {
-                        window.alert(deletionError);
-                      }
+                      setDeleteError(null);
+                      setPendingDeleteMemory(memory);
                     }}
                     disabled={deleteLoading}
-                    className="flex items-center gap-1.5 text-xs text-bark/40 hover:text-error transition-colors disabled:opacity-60"
+                    className="tap-target flex items-center gap-1.5 text-xs text-bark/40 hover:text-error transition-colors disabled:opacity-60"
                     title="Delete memory"
                     aria-label="Delete memory"
                   >
@@ -383,7 +392,7 @@ export function MemoryFeed({
                         void submitComment(memory.id);
                       }}
                       disabled={commentLoading}
-                      className="w-9 h-9 rounded-xl bg-gradient-to-r from-moss to-leaf text-white flex items-center justify-center disabled:opacity-60"
+                      className="tap-target w-9 h-9 rounded-xl bg-gradient-to-r from-moss to-leaf text-white flex items-center justify-center disabled:opacity-60"
                     >
                       {commentLoading ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -402,6 +411,57 @@ export function MemoryFeed({
           </motion.article>
         );
       })}
+
+      <MobileActionSheet
+        open={Boolean(pendingDeleteMemory)}
+        onClose={() => {
+          setDeleteError(null);
+          setPendingDeleteMemory(null);
+        }}
+        title="Delete Memory"
+        ariaLabel="Delete memory confirmation"
+        className="md:max-w-sm"
+      >
+        <div className="mobile-sheet-body pt-4 space-y-4">
+          <p className="text-sm text-bark/70 leading-relaxed">
+            Delete{' '}
+            <span className="font-medium text-earth">
+              {pendingDeleteMemory?.title || 'this memory'}
+            </span>
+            ? This action cannot be undone.
+          </p>
+
+          {deleteError ? <p className="text-xs text-error">{deleteError}</p> : null}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteError(null);
+                setPendingDeleteMemory(null);
+              }}
+              className="tap-target flex-1 py-3 rounded-xl border border-stone/40 text-sm font-medium text-earth hover:bg-stone/20 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmDeleteMemory()}
+              disabled={
+                !pendingDeleteMemory ||
+                Boolean(deleteLoadingByMemory[pendingDeleteMemory.id])
+              }
+              className="tap-target flex-1 py-3 rounded-xl bg-error text-white text-sm font-medium disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {pendingDeleteMemory &&
+              deleteLoadingByMemory[pendingDeleteMemory.id] ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : null}
+              Delete
+            </button>
+          </div>
+        </div>
+      </MobileActionSheet>
     </div>
   );
 }

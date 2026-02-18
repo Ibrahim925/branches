@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "generate:aasa": "node scripts/generate-aasa.mjs",
+    "ios:sync": "npm --prefix apps/ios-shell run sync",
+    "ios:open": "npm --prefix apps/ios-shell run open",
+    "ios:run": "npm --prefix apps/ios-shell run run:ios",
+    "test:unit:deeplink": "tsx --test src/lib/native/deeplink.test.ts",
+    "test:e2e:ios-smoke": "playwright test e2e/ios-shell-smoke.spec.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -28,6 +34,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.2",
     "@tailwindcss/postcss": "^4",
     "@types/dagre": "^0.7.53",
     "@types/node": "^20",
@@ -38,6 +45,7 @@
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
     "tailwindcss": "^4",
+    "tsx": "^4.19.4",
     "typescript": "^5"
   }
 }

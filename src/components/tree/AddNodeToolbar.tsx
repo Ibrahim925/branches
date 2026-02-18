@@ -40,6 +40,7 @@ export function AddNodeToolbar({
   // Synchronize with forceOpen
   useEffect(() => {
     if (forceOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsOpen(true);
       setRelationship(initialRelationship);
     }
@@ -151,7 +152,9 @@ export function AddNodeToolbar({
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-br from-moss to-leaf rounded-2xl shadow-xl shadow-moss/30 flex items-center justify-center text-white hover:shadow-2xl transition-shadow z-20"
+        className="tap-target fixed bottom-[calc(var(--safe-area-bottom)+var(--mobile-tab-bar-offset)+2rem)] right-8 md:bottom-[calc(var(--safe-area-bottom)+2rem)] w-14 h-14 bg-gradient-to-br from-moss to-leaf rounded-2xl shadow-xl shadow-moss/30 flex items-center justify-center text-white hover:shadow-2xl transition-shadow z-20"
+        aria-label="Add family member"
+        type="button"
       >
         <Plus className="w-6 h-6" />
       </motion.button>
@@ -173,10 +176,13 @@ export function AddNodeToolbar({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pt-[calc(var(--safe-area-top)+1rem)] pb-[calc(var(--safe-area-bottom)+1rem)]"
               onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Add family member modal"
             >
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[min(90vh,var(--app-vh))] overflow-y-auto p-6">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
@@ -188,8 +194,10 @@ export function AddNodeToolbar({
                     </h2>
                   </div>
                   <button
+                    type="button"
                     onClick={handleClose}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-stone/40 transition-colors"
+                    className="tap-target w-8 h-8 flex items-center justify-center rounded-lg hover:bg-stone/40 transition-colors"
+                    aria-label="Close add family member modal"
                   >
                     <X className="w-4 h-4 text-bark/40" />
                   </button>
@@ -208,7 +216,6 @@ export function AddNodeToolbar({
                         placeholder="Jane"
                         className="w-full px-4 py-3 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 focus:border-moss text-earth placeholder:text-bark/30 transition-all"
                         required
-                        autoFocus
                       />
                     </div>
                     <div>

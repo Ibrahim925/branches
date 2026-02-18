@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion } from 'framer-motion';
 import { TreePine, Mail, Lock, Sparkles, UserPlus, LogIn } from 'lucide-react';
@@ -13,11 +13,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
-  const nextParam =
-    typeof window === 'undefined'
-      ? null
-      : new URLSearchParams(window.location.search).get('next');
+  const nextParam = searchParams.get('next');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -113,7 +111,7 @@ export default function LoginPage() {
           <p className="text-bark/50 text-sm mt-1">
             {isSignUp
               ? 'Sign up to start building your family tree'
-              : 'Sign in to continue to your trees'}
+              : 'Sign in to continue to Home'}
           </p>
         </div>
 
@@ -128,7 +126,6 @@ export default function LoginPage() {
               placeholder="your@email.com"
               className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-stone focus:outline-none focus:ring-2 focus:ring-moss/50 focus:border-moss text-earth placeholder:text-bark/30 transition-all"
               required
-              autoFocus
             />
           </div>
 

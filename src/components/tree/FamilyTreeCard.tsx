@@ -16,6 +16,7 @@ type RelationshipKind = 'parent' | 'child' | 'spouse';
 interface FamilyTreeCardProps {
   node: PositionedFamilyNode;
   selected: boolean;
+  reduceMotion?: boolean;
   onSelect: () => void;
   onAddMember: (relationship: RelationshipKind) => void;
 }
@@ -27,6 +28,7 @@ interface EdgeActionProps {
   placement: 'top' | 'bottom' | 'left' | 'right';
   disabledLabel: string;
   onClick: () => void;
+  alwaysVisible?: boolean;
 }
 
 function EdgeAction({
@@ -36,19 +38,21 @@ function EdgeAction({
   placement,
   disabledLabel,
   onClick,
+  alwaysVisible = false,
 }: EdgeActionProps) {
   const placementClassBySide = {
-    top: 'left-1/2 -translate-x-1/2 -top-9',
-    bottom: 'left-1/2 -translate-x-1/2 -bottom-9',
-    left: '-left-9 top-1/2 -translate-y-1/2',
-    right: '-right-9 top-1/2 -translate-y-1/2',
+    top: 'left-1/2 -translate-x-1/2 -top-11',
+    bottom: 'left-1/2 -translate-x-1/2 -bottom-11',
+    left: '-left-11 top-1/2 -translate-y-1/2',
+    right: '-right-11 top-1/2 -translate-y-1/2',
   } as const;
 
   if (!enabled) {
     return (
       <div
+        data-visible={alwaysVisible}
         title={disabledLabel}
-        className={`absolute ${placementClassBySide[placement]} w-9 h-9 rounded-full bg-white/95 border border-stone/60 text-bark/40 shadow-sm pointer-events-none opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center`}
+        className={`edge-action tap-target absolute ${placementClassBySide[placement]} w-11 h-11 rounded-full bg-white/95 border border-stone/60 text-bark/40 shadow-sm transition-all duration-200 flex items-center justify-center`}
       >
         <Lock size={13} />
       </div>
@@ -58,6 +62,7 @@ function EdgeAction({
   return (
     <motion.button
       type="button"
+      data-visible={alwaysVisible}
       title={label}
       aria-label={label}
       whileHover={{ scale: 1.06 }}
@@ -66,7 +71,7 @@ function EdgeAction({
         event.stopPropagation();
         onClick();
       }}
-      className={`absolute ${placementClassBySide[placement]} w-9 h-9 rounded-full text-white shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 border border-white/50 flex items-center justify-center leading-none`}
+      className={`edge-action tap-target absolute ${placementClassBySide[placement]} w-11 h-11 rounded-full text-white shadow-lg transition-all duration-200 border border-white/50 flex items-center justify-center leading-none`}
       style={{
         background:
           placement === 'left' || placement === 'right'
@@ -83,6 +88,7 @@ function EdgeAction({
 export function FamilyTreeCard({
   node,
   selected,
+  reduceMotion = false,
   onSelect,
   onAddMember,
 }: FamilyTreeCardProps) {
@@ -93,15 +99,20 @@ export function FamilyTreeCard({
 
   return (
     <motion.div
+      data-tree-node-card="true"
       role="button"
       tabIndex={0}
       layout
       layoutId={`person-${node.id}`}
-      initial={{ opacity: 0, scale: 0.88, y: 26 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.84, y: -18 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      whileHover={{ y: -6 }}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.88, y: 26 }}
+      animate={reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.84, y: -18 }}
+      transition={
+        reduceMotion
+          ? { duration: 0.1 }
+          : { type: 'spring', stiffness: 320, damping: 28 }
+      }
+      whileHover={reduceMotion ? undefined : { y: -6 }}
       onClick={(event) => {
         event.stopPropagation();
         onSelect();
@@ -186,6 +197,7 @@ export function FamilyTreeCard({
         placement="top"
         disabledLabel="This person already has two parents"
         onClick={() => onAddMember('parent')}
+        alwaysVisible={selected}
       />
 
       <EdgeAction
@@ -195,6 +207,7 @@ export function FamilyTreeCard({
         placement="bottom"
         disabledLabel="Cannot add child"
         onClick={() => onAddMember('child')}
+        alwaysVisible={selected}
       />
 
       <EdgeAction
@@ -204,6 +217,7 @@ export function FamilyTreeCard({
         placement="left"
         disabledLabel="This person already has a spouse"
         onClick={() => onAddMember('spouse')}
+        alwaysVisible={selected}
       />
 
       <EdgeAction
@@ -213,6 +227,7 @@ export function FamilyTreeCard({
         placement="right"
         disabledLabel="This person already has a spouse"
         onClick={() => onAddMember('spouse')}
+        alwaysVisible={selected}
       />
     </motion.div>
   );

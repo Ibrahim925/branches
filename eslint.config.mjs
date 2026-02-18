@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Capacitor/iOS generated artifacts.
+    "apps/ios-shell/node_modules/**",
+    "apps/ios-shell/ios/DerivedData/**",
+    "apps/ios-shell/ios/build/**",
   ]),
 ]);
 

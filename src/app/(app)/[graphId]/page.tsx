@@ -5,6 +5,7 @@ import { Loader2, Minus, Plus, Sparkles, UserPlus } from 'lucide-react';
 import {
   use,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -14,10 +15,15 @@ import {
 
 import { FamilyTreeCard } from '@/components/tree/FamilyTreeCard';
 import { NodeDetailSidebar } from '@/components/tree/NodeDetailSidebar';
+import { MobilePrimaryAction } from '@/components/system/MobilePrimaryAction';
+import { Skeleton } from '@/components/system/Skeleton';
 import { createClient } from '@/lib/supabase/client';
+import { trackLowFpsMode, trackPerformanceMetric } from '@/lib/telemetry/performance';
 import { getDateOnlyYear } from '@/utils/dateOnly';
 import {
   buildFamilyTreeLayout,
+  FAMILY_TREE_NODE_HEIGHT,
+  FAMILY_TREE_NODE_WIDTH,
   type FamilyTreeEdgeInput,
   type FamilyTreeNodeInput,
 } from '@/utils/familyTreeLayout';
@@ -69,6 +75,8 @@ const MIN_ZOOM = 0.45;
 const MAX_ZOOM = 1.85;
 const ZOOM_STEP = 0.08;
 const WHEEL_ZOOM_SENSITIVITY = 0.0015;
+const CULLING_NODE_THRESHOLD = 120;
+const CULLING_OVERSCAN = 240;
 
 function resolveClaimedName(profile: ClaimedProfileRow, fallback: RawNodeRecord) {
   const fromDisplayFirst = profile.display_name
@@ -92,12 +100,27 @@ function TreeView({ graphId }: { graphId: string }) {
 
   const [rawNodes, setRawNodes] = useState<RawNodeRecord[]>([]);
   const [rawEdges, setRawEdges] = useState<RawEdgeRecord[]>([]);
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const [graphName, setGraphName] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [creatingNode, setCreatingNode] = useState(false);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia('(min-width: 768px)').matches
+      : false
+  );
+  const [lowFpsMode, setLowFpsMode] = useState(false);
+  const [isInitialGraphLoading, setIsInitialGraphLoading] = useState(true);
+  const [viewportSnapshot, setViewportSnapshot] = useState({
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+  });
 
   const clampZoom = useCallback(
     (value: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value)),
@@ -279,7 +302,8 @@ function TreeView({ graphId }: { graphId: string }) {
         return;
       }
 
-      setSelectedNode(newNode.id);
+      setActiveNodeId(newNode.id);
+      setDetailNodeId(newNode.id);
       setReloadNonce((value) => value + 1);
       showNotice('Family member added.');
     },
@@ -318,7 +342,8 @@ function TreeView({ graphId }: { graphId: string }) {
     }
 
     const wasEmpty = rawNodes.length === 0;
-    setSelectedNode(node.id);
+    setActiveNodeId(node.id);
+    setDetailNodeId(node.id);
     setReloadNonce((value) => value + 1);
     showNotice(
       wasEmpty
@@ -329,11 +354,23 @@ function TreeView({ graphId }: { graphId: string }) {
   }, [creatingNode, graphId, rawNodes.length, showNotice, supabase]);
 
   const loadGraphData = useCallback(async () => {
-    const [{ data: graphData }, { data: nodeRows }, { data: edgeRows }] = await Promise.all([
-      supabase.from('graphs').select('name').eq('id', graphId).single(),
-      supabase.from('nodes').select('*').eq('graph_id', graphId),
-      supabase.from('edges').select('*').eq('graph_id', graphId),
-    ]);
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : null;
+
+    const [
+      {
+        data: { user: viewer },
+      },
+      { data: graphData },
+      { data: nodeRows },
+      { data: edgeRows },
+    ] = await Promise.all(
+      [
+        supabase.auth.getUser(),
+        supabase.from('graphs').select('name').eq('id', graphId).single(),
+        supabase.from('nodes').select('*').eq('graph_id', graphId),
+        supabase.from('edges').select('*').eq('graph_id', graphId),
+      ]
+    );
 
     if (graphData?.name) {
       setGraphName(graphData.name);
@@ -365,19 +402,29 @@ function TreeView({ graphId }: { graphId: string }) {
         profile,
       ])
     );
+    const viewerId = viewer?.id || null;
 
     const mergedNodes = loadedNodes.map((node) => {
       if (!node.claimed_by) return node;
+      const isCurrentUserNode = viewerId === node.claimed_by;
 
       const profile = profileById.get(node.claimed_by);
-      if (!profile) return node;
+      if (!profile) {
+        if (!isCurrentUserNode) return node;
+
+        return {
+          ...node,
+          first_name: 'You',
+          last_name: null,
+        };
+      }
 
       const resolvedName = resolveClaimedName(profile, node);
 
       return {
         ...node,
-        first_name: resolvedName.firstName,
-        last_name: resolvedName.lastName,
+        first_name: isCurrentUserNode ? 'You' : resolvedName.firstName,
+        last_name: isCurrentUserNode ? null : resolvedName.lastName,
         avatar_url: profile.avatar_url,
         avatar_zoom: profile.avatar_zoom,
         avatar_focus_x: profile.avatar_focus_x,
@@ -390,9 +437,22 @@ function TreeView({ graphId }: { graphId: string }) {
     setRawNodes(mergedNodes);
     setRawEdges(loadedEdges);
 
-    setSelectedNode((current) =>
+    setActiveNodeId((current) =>
       current && !mergedNodes.some((node) => node.id === current) ? null : current
     );
+    setDetailNodeId((current) =>
+      current && !mergedNodes.some((node) => node.id === current) ? null : current
+    );
+
+    if (startedAt !== null) {
+      trackPerformanceMetric('tree.load_graph_data.ms', performance.now() - startedAt, {
+        graphId,
+        nodeCount: mergedNodes.length,
+        edgeCount: loadedEdges.length,
+      });
+    }
+
+    setIsInitialGraphLoading(false);
   }, [graphId, supabase]);
 
   useEffect(() => {
@@ -434,6 +494,59 @@ function TreeView({ graphId }: { graphId: string }) {
     };
   }, [graphId, supabase]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => setPrefersReducedMotion(mediaQuery.matches);
+    onChange();
+    mediaQuery.addEventListener('change', onChange);
+    return () => mediaQuery.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    const onChange = () => setIsDesktopViewport(mediaQuery.matches);
+    onChange();
+    mediaQuery.addEventListener('change', onChange);
+
+    return () => mediaQuery.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let rafId = 0;
+    let frameCount = 0;
+    const start = performance.now();
+    const sampleDurationMs = 2200;
+
+    const tick = (timestamp: number) => {
+      frameCount += 1;
+      const elapsedMs = timestamp - start;
+
+      if (elapsedMs >= sampleDurationMs) {
+        const fps = (frameCount * 1000) / elapsedMs;
+        const isLowFps = fps < 45;
+        setLowFpsMode(isLowFps);
+        trackLowFpsMode(isLowFps, { graphId, fps: Number(fps.toFixed(1)) });
+        return;
+      }
+
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [graphId]);
+
   const layoutInputNodes = useMemo<FamilyTreeNodeInput[]>(
     () =>
       rawNodes.map((node) => ({
@@ -463,10 +576,14 @@ function TreeView({ graphId }: { graphId: string }) {
     [rawEdges]
   );
 
+  const deferredLayoutInputNodes = useDeferredValue(layoutInputNodes);
+  const deferredLayoutInputEdges = useDeferredValue(layoutInputEdges);
+
   const layout = useMemo(
-    () => buildFamilyTreeLayout(layoutInputNodes, layoutInputEdges),
-    [layoutInputEdges, layoutInputNodes]
+    () => buildFamilyTreeLayout(deferredLayoutInputNodes, deferredLayoutInputEdges),
+    [deferredLayoutInputEdges, deferredLayoutInputNodes]
   );
+  const isLayoutHydrating = rawNodes.length > 0 && layout.nodes.length === 0;
 
   const canvasMetrics = useMemo(() => {
     const baseWidth = layout.bounds.width + CANVAS_PADDING_X * 2;
@@ -493,6 +610,103 @@ function TreeView({ graphId }: { graphId: string }) {
     viewport.scrollTo({ left: nextLeft, top: nextTop, behavior: 'smooth' });
     didInitialCenterRef.current = true;
   }, [canvasMetrics.scaledWidth, layout.nodes.length, zoom]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    let rafId = 0;
+    const updateSnapshot = () => {
+      rafId = 0;
+      setViewportSnapshot({
+        left: viewport.scrollLeft,
+        top: viewport.scrollTop,
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+      });
+    };
+
+    const scheduleSnapshot = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(updateSnapshot);
+    };
+
+    scheduleSnapshot();
+    viewport.addEventListener('scroll', scheduleSnapshot, { passive: true });
+    window.addEventListener('resize', scheduleSnapshot);
+
+    return () => {
+      viewport.removeEventListener('scroll', scheduleSnapshot);
+      window.removeEventListener('resize', scheduleSnapshot);
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, []);
+
+  const shouldCull =
+    layout.nodes.length >= CULLING_NODE_THRESHOLD &&
+    viewportSnapshot.width > 0 &&
+    viewportSnapshot.height > 0;
+
+  const visibleNodeIds = useMemo(() => {
+    if (!shouldCull) return null;
+
+    const worldLeft =
+      viewportSnapshot.left / zoom - CANVAS_PADDING_X - CULLING_OVERSCAN;
+    const worldTop =
+      viewportSnapshot.top / zoom - CANVAS_PADDING_Y - CULLING_OVERSCAN;
+    const worldRight =
+      (viewportSnapshot.left + viewportSnapshot.width) / zoom -
+      CANVAS_PADDING_X +
+      CULLING_OVERSCAN;
+    const worldBottom =
+      (viewportSnapshot.top + viewportSnapshot.height) / zoom -
+      CANVAS_PADDING_Y +
+      CULLING_OVERSCAN;
+
+    const next = new Set<string>();
+    layout.nodes.forEach((node) => {
+      const nodeLeft = node.x;
+      const nodeTop = node.y;
+      const nodeRight = node.x + FAMILY_TREE_NODE_WIDTH;
+      const nodeBottom = node.y + FAMILY_TREE_NODE_HEIGHT;
+
+      if (
+        nodeRight >= worldLeft &&
+        nodeLeft <= worldRight &&
+        nodeBottom >= worldTop &&
+        nodeTop <= worldBottom
+      ) {
+        next.add(node.id);
+      }
+    });
+
+    return next;
+  }, [layout.nodes, shouldCull, viewportSnapshot.height, viewportSnapshot.left, viewportSnapshot.top, viewportSnapshot.width, zoom]);
+
+  const renderedNodes = useMemo(() => {
+    if (!shouldCull || !visibleNodeIds) return layout.nodes;
+    return layout.nodes.filter((node) => visibleNodeIds.has(node.id));
+  }, [layout.nodes, shouldCull, visibleNodeIds]);
+
+  const renderedEdges = useMemo(() => {
+    if (!shouldCull || !visibleNodeIds) return layout.edges;
+    return layout.edges.filter((edge) => edge.nodeIds.some((nodeId) => visibleNodeIds.has(nodeId)));
+  }, [layout.edges, shouldCull, visibleNodeIds]);
+
+  const shouldReduceMotion = prefersReducedMotion || shouldCull || lowFpsMode;
+
+  useEffect(() => {
+    if (layout.nodes.length === 0) return;
+
+    trackPerformanceMetric('tree.layout_snapshot', layout.nodes.length, {
+      graphId,
+      edgeCount: layout.edges.length,
+      cullingEnabled: shouldCull,
+      lowFpsMode,
+    });
+  }, [graphId, layout.edges.length, layout.nodes.length, lowFpsMode, shouldCull]);
 
   const applyZoom = useCallback(
     (
@@ -556,19 +770,39 @@ function TreeView({ graphId }: { graphId: string }) {
     [applyZoom]
   );
 
+  const handleNodeTap = useCallback(
+    (nodeId: string) => {
+      if (isDesktopViewport) {
+        setActiveNodeId(nodeId);
+        setDetailNodeId(nodeId);
+        return;
+      }
+
+      setActiveNodeId((currentActiveNodeId) => {
+        if (currentActiveNodeId === nodeId) {
+          setDetailNodeId(nodeId);
+          return currentActiveNodeId;
+        }
+
+        return nodeId;
+      });
+    },
+    [isDesktopViewport]
+  );
+
   return (
-    <div className="h-screen w-full relative overflow-hidden bg-gradient-to-br from-[#F5F1E8] via-stone to-[#EAE2D4]">
+    <div className="ios-gradient-fix h-full safe-bottom w-full relative overflow-hidden bg-gradient-to-br from-[#F5F1E8] via-stone to-[#EAE2D4]">
       <div className="absolute -top-28 -left-24 w-72 h-72 rounded-full bg-gradient-to-br from-white/50 to-transparent blur-3xl pointer-events-none" />
       <div className="absolute -bottom-28 -right-20 w-80 h-80 rounded-full bg-gradient-to-br from-sunrise/20 to-transparent blur-3xl pointer-events-none" />
 
-      <div className="absolute top-4 left-4 z-20 bg-white/82 backdrop-blur-md rounded-2xl px-4 py-3 shadow-sm border border-stone/40">
+      <div className="absolute top-[calc(var(--safe-area-top)+0.5rem)] left-4 z-20 bg-white/82 backdrop-blur-md rounded-2xl px-4 py-3 shadow-sm border border-stone/40">
         <p className="text-[11px] uppercase tracking-[0.18em] text-bark/45">Family Tree</p>
         <h2 className="text-sm font-semibold text-earth mt-0.5">{graphName || 'Untitled Graph'}</h2>
       </div>
 
-      <div className="absolute top-4 right-4 z-20 hidden md:flex items-center gap-2 rounded-2xl border border-stone/50 bg-white/78 px-3 py-2 text-xs text-bark/60 backdrop-blur-sm">
+      <div className="absolute top-[calc(var(--safe-area-top)+0.5rem)] right-4 z-20 hidden md:flex items-center gap-2 rounded-2xl border border-stone/50 bg-white/78 px-3 py-2 text-xs text-bark/60 backdrop-blur-sm">
         <Sparkles className="w-3.5 h-3.5 text-sunrise" />
-        Hover card edges to add family. Ctrl/Cmd + wheel to zoom.
+        Tap card edges to add family. Ctrl/Cmd + wheel to zoom.
       </div>
 
       <AnimatePresence>
@@ -577,14 +811,16 @@ function TreeView({ graphId }: { graphId: string }) {
             initial={{ opacity: 0, y: -14 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-xl bg-earth text-white text-xs shadow-lg"
+            className="absolute top-[calc(var(--safe-area-top)+0.5rem)] left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-xl bg-earth text-white text-xs shadow-lg"
           >
             {notice}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {layout.nodes.length === 0 ? (
+      {isInitialGraphLoading || isLayoutHydrating ? (
+        <TreePageSkeleton />
+      ) : rawNodes.length === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center p-6">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
@@ -622,7 +858,17 @@ function TreeView({ graphId }: { graphId: string }) {
       ) : (
         <div
           ref={viewportRef}
-          onClick={() => setSelectedNode(null)}
+          onClick={(event) => {
+            const target = event.target;
+            if (
+              target instanceof Element &&
+              target.closest('[data-tree-node-card="true"]')
+            ) {
+              return;
+            }
+
+            setActiveNodeId(null);
+          }}
           onWheel={handleViewportWheel}
           className="absolute inset-0 overflow-auto pt-24 pb-12 px-6 md:px-8"
         >
@@ -649,32 +895,48 @@ function TreeView({ graphId }: { graphId: string }) {
                 }}
               >
                 <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-                  {layout.edges.map((edge) => (
-                    <motion.path
-                      key={edge.id}
-                      d={edge.path}
-                      fill="none"
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      animate={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 0.42, ease: 'easeOut' }}
-                      style={{
-                        stroke: edge.kind === 'partnership' ? '#B18E67' : '#6E675D',
-                        strokeWidth: edge.kind === 'partnership' ? 2.2 : 2.4,
-                        strokeLinecap: 'round',
-                        strokeLinejoin: 'round',
-                        strokeDasharray: edge.kind === 'partnership' ? '7 5' : 'none',
-                      }}
-                    />
-                  ))}
+                  {renderedEdges.map((edge) =>
+                    shouldReduceMotion ? (
+                      <path
+                        key={edge.id}
+                        d={edge.path}
+                        fill="none"
+                        style={{
+                          stroke: edge.kind === 'partnership' ? '#B18E67' : '#6E675D',
+                          strokeWidth: edge.kind === 'partnership' ? 2.2 : 2.4,
+                          strokeLinecap: 'round',
+                          strokeLinejoin: 'round',
+                          strokeDasharray: edge.kind === 'partnership' ? '7 5' : 'none',
+                        }}
+                      />
+                    ) : (
+                      <motion.path
+                        key={edge.id}
+                        d={edge.path}
+                        fill="none"
+                        initial={{ pathLength: 0, opacity: 0 }}
+                        animate={{ pathLength: 1, opacity: 1 }}
+                        transition={{ duration: 0.42, ease: 'easeOut' }}
+                        style={{
+                          stroke: edge.kind === 'partnership' ? '#B18E67' : '#6E675D',
+                          strokeWidth: edge.kind === 'partnership' ? 2.2 : 2.4,
+                          strokeLinecap: 'round',
+                          strokeLinejoin: 'round',
+                          strokeDasharray: edge.kind === 'partnership' ? '7 5' : 'none',
+                        }}
+                      />
+                    )
+                  )}
                 </svg>
 
                 <AnimatePresence initial={false}>
-                  {layout.nodes.map((node) => (
+                  {renderedNodes.map((node) => (
                     <FamilyTreeCard
                       key={node.id}
                       node={node}
-                      selected={selectedNode === node.id}
-                      onSelect={() => setSelectedNode(node.id)}
+                      selected={activeNodeId === node.id}
+                      reduceMotion={shouldReduceMotion}
+                      onSelect={() => handleNodeTap(node.id)}
                       onAddMember={(relationship) => handleQuickAdd(node.id, relationship)}
                     />
                   ))}
@@ -686,35 +948,46 @@ function TreeView({ graphId }: { graphId: string }) {
       )}
 
       {layout.nodes.length > 0 && (
-        <motion.button
-          type="button"
-          onClick={handleCreateNode}
-          disabled={creatingNode}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          className="absolute bottom-6 left-6 z-30 inline-flex items-center gap-2 rounded-2xl border border-stone/55 bg-white/90 px-4 h-10 text-sm font-medium text-earth backdrop-blur-md shadow-lg hover:bg-white disabled:opacity-70"
-        >
-          {creatingNode ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin text-moss" />
-              Adding...
-            </>
-          ) : (
-            <>
-              <UserPlus className="w-4 h-4 text-moss" />
-              Add node
-            </>
-          )}
-        </motion.button>
+        <>
+          <MobilePrimaryAction
+            label="Add family member"
+            ariaLabel="Add family member"
+            icon={<UserPlus className="w-6 h-6" />}
+            onPress={handleCreateNode}
+            loading={creatingNode}
+            hidden={Boolean(activeNodeId || detailNodeId)}
+          />
+
+          <motion.button
+            type="button"
+            onClick={handleCreateNode}
+            disabled={creatingNode}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            className="hidden md:inline-flex tap-target absolute bottom-[calc(var(--safe-area-bottom)+1.5rem)] left-6 z-30 items-center gap-2 rounded-2xl border border-stone/55 bg-white/90 px-4 h-11 text-sm font-medium text-earth backdrop-blur-md shadow-lg hover:bg-white disabled:opacity-70"
+          >
+            {creatingNode ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-moss" />
+                Adding...
+              </>
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4 text-moss" />
+                Add node
+              </>
+            )}
+          </motion.button>
+        </>
       )}
 
       {layout.nodes.length > 0 && (
-        <div className="absolute bottom-6 right-6 z-30 rounded-2xl border border-stone/55 bg-white/88 backdrop-blur-md shadow-lg">
+        <div className="absolute bottom-[calc(var(--safe-area-bottom)+var(--mobile-tab-bar-offset)+1.5rem)] left-4 md:bottom-[calc(var(--safe-area-bottom)+1.5rem)] md:left-auto md:right-6 z-30 rounded-2xl border border-stone/55 bg-white/88 backdrop-blur-md shadow-lg">
           <div className="flex items-center">
             <button
               type="button"
               onClick={handleZoomOut}
-              className="w-10 h-10 flex items-center justify-center text-bark/70 hover:bg-stone/45 rounded-l-2xl transition-colors"
+              className="tap-target w-11 h-11 flex items-center justify-center text-bark/70 hover:bg-stone/45 rounded-l-2xl transition-colors"
               aria-label="Zoom out"
             >
               <Minus className="w-4 h-4" />
@@ -722,7 +995,7 @@ function TreeView({ graphId }: { graphId: string }) {
             <button
               type="button"
               onClick={handleZoomReset}
-              className="h-10 px-3 text-xs font-semibold text-bark/75 border-l border-r border-stone/45 hover:bg-stone/35 transition-colors"
+              className="tap-target h-11 px-3 text-xs font-semibold text-bark/75 border-l border-r border-stone/45 hover:bg-stone/35 transition-colors"
               title="Reset zoom"
             >
               {Math.round(zoom * 100)}%
@@ -730,7 +1003,7 @@ function TreeView({ graphId }: { graphId: string }) {
             <button
               type="button"
               onClick={handleZoomIn}
-              className="w-10 h-10 flex items-center justify-center text-bark/70 hover:bg-stone/45 rounded-r-2xl transition-colors"
+              className="tap-target w-11 h-11 flex items-center justify-center text-bark/70 hover:bg-stone/45 rounded-r-2xl transition-colors"
               aria-label="Zoom in"
             >
               <Plus className="w-4 h-4" />
@@ -740,12 +1013,12 @@ function TreeView({ graphId }: { graphId: string }) {
       )}
 
       <AnimatePresence>
-        {selectedNode && (
+        {detailNodeId && (
           <NodeDetailSidebar
-            key={selectedNode}
-            nodeId={selectedNode}
+            key={detailNodeId}
+            nodeId={detailNodeId}
             graphId={graphId}
-            onClose={() => setSelectedNode(null)}
+            onClose={() => setDetailNodeId(null)}
             onUpdate={() => setReloadNonce((value) => value + 1)}
           />
         )}
@@ -770,6 +1043,33 @@ function PlusIcon() {
       <path d="M12 5v14" />
       <path d="M5 12h14" />
     </svg>
+  );
+}
+
+function TreePageSkeleton() {
+  return (
+    <div className="absolute inset-0 p-6 md:p-8 pt-24">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="rounded-3xl border border-stone/45 bg-white/78 p-6">
+          <div className="mb-6 flex items-center justify-between">
+            <Skeleton className="h-6 w-48 rounded-lg" />
+            <Skeleton className="h-10 w-28 rounded-xl" />
+          </div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="rounded-2xl border border-stone/40 bg-white/70 p-4"
+              >
+                <Skeleton className="mx-auto h-16 w-16 rounded-full" />
+                <Skeleton className="mt-4 h-4 w-full rounded-md" />
+                <Skeleton className="mt-2 h-3 w-2/3 rounded-md" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -49,6 +49,19 @@ const nextConfig: NextConfig = {
     experimental: {
         optimizePackageImports: ["lucide-react", "framer-motion"],
     },
+    async headers() {
+        return [
+            {
+                source: "/.well-known/apple-app-site-association",
+                headers: [
+                    {
+                        key: "Content-Type",
+                        value: "application/json",
+                    },
+                ],
+            },
+        ];
+    },
 };
 
 export default nextConfig;

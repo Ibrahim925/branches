@@ -3,10 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Loader2, Save, Shield, Trash2, Users } from 'lucide-react';
+import Link from 'next/link';
+import {
+  AlertTriangle,
+  Loader2,
+  Save,
+  Shield,
+  Trash2,
+  Users,
+} from 'lucide-react';
 
-import { ProfileEditorForm, type EditableProfile } from '@/components/profile/ProfileEditorForm';
 import { createClient } from '@/lib/supabase/client';
+import { MobileActionSheet } from '@/components/system/MobileActionSheet';
+import { Skeleton } from '@/components/system/Skeleton';
 
 type GraphRow = {
   id: string;
@@ -42,6 +51,18 @@ type MemberEntry = MembershipRow & {
   profile: MemberProfileRow | null;
 };
 
+type InviteSummaryRow = {
+  id: string;
+  status: 'pending' | 'accepted' | 'expired' | string;
+};
+
+type InviteSummary = {
+  total: number;
+  pending: number;
+  accepted: number;
+  expired: number;
+};
+
 function formatProfileName(profile: MemberProfileRow | null) {
   if (!profile) return 'Family Member';
   const full = `${profile.first_name || ''} ${profile.last_name || ''}`.trim();
@@ -59,6 +80,12 @@ export default function GraphSettingsPage() {
 
   const [graph, setGraph] = useState<GraphRow | null>(null);
   const [members, setMembers] = useState<MemberEntry[]>([]);
+  const [inviteSummary, setInviteSummary] = useState<InviteSummary>({
+    total: 0,
+    pending: 0,
+    accepted: 0,
+    expired: 0,
+  });
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentRole, setCurrentRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
@@ -69,6 +96,8 @@ export default function GraphSettingsPage() {
   const [roleSavingId, setRoleSavingId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [deletingGraph, setDeletingGraph] = useState(false);
+  const [pendingRemoveMember, setPendingRemoveMember] = useState<MemberEntry | null>(null);
+  const [showDeleteGraphConfirm, setShowDeleteGraphConfirm] = useState(false);
 
   const canManageGraph = currentRole === 'admin';
 
@@ -87,7 +116,11 @@ export default function GraphSettingsPage() {
 
     setCurrentUserId(user.id);
 
-    const [{ data: graphRow, error: graphError }, { data: membershipRows, error: membershipError }] =
+    const [
+      { data: graphRow, error: graphError },
+      { data: membershipRows, error: membershipError },
+      { data: inviteRows },
+    ] =
       await Promise.all([
         supabase
           .from('graphs')
@@ -99,6 +132,10 @@ export default function GraphSettingsPage() {
           .select('id,profile_id,role,joined_at')
           .eq('graph_id', graphId)
           .order('joined_at', { ascending: true }),
+        supabase
+          .from('invites')
+          .select('id,status')
+          .eq('graph_id', graphId),
       ]);
 
     if (graphError || !graphRow || membershipError) {
@@ -136,6 +173,13 @@ export default function GraphSettingsPage() {
       ...membership,
       profile: profileById.get(membership.profile_id) || null,
     }));
+    const invites = (inviteRows as InviteSummaryRow[] | null) ?? [];
+    const nextInviteSummary: InviteSummary = {
+      total: invites.length,
+      pending: invites.filter((invite) => invite.status === 'pending').length,
+      accepted: invites.filter((invite) => invite.status === 'accepted').length,
+      expired: invites.filter((invite) => invite.status === 'expired').length,
+    };
 
     const myMembership = memberships.find((membership) => membership.profile_id === user.id);
 
@@ -144,6 +188,7 @@ export default function GraphSettingsPage() {
     setGraphDescription(graphRow.description || '');
     setGraphCoverImageUrl(graphRow.cover_image_url || '');
     setMembers(nextMembers);
+    setInviteSummary(nextInviteSummary);
     setCurrentRole(myMembership?.role || null);
     setLoading(false);
   }, [graphId, router, supabase]);
@@ -215,7 +260,6 @@ export default function GraphSettingsPage() {
 
   async function handleRemoveMember(member: MemberEntry) {
     if (!canManageGraph) return;
-    if (!confirm(`Remove ${formatProfileName(member.profile)} from this tree?`)) return;
 
     const adminMembers = members.filter((entry) => entry.role === 'admin');
     if (
@@ -248,7 +292,6 @@ export default function GraphSettingsPage() {
 
   async function handleDeleteGraph() {
     if (!graph || !canManageGraph) return;
-    if (!confirm('Delete this tree and all related data? This cannot be undone.')) return;
 
     setDeletingGraph(true);
     setError(null);
@@ -268,14 +311,39 @@ export default function GraphSettingsPage() {
     router.refresh();
   }
 
-  const currentUserProfile = members.find(
-    (member) => member.profile_id === currentUserId
-  )?.profile;
+  async function confirmRemoveMember() {
+    if (!pendingRemoveMember) return;
+    const target = pendingRemoveMember;
+    setPendingRemoveMember(null);
+    await handleRemoveMember(target);
+  }
+
+  async function confirmDeleteGraph() {
+    setShowDeleteGraphConfirm(false);
+    await handleDeleteGraph();
+  }
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-10 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-moss" />
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-36 rounded-lg" />
+          <Skeleton className="h-4 w-72 rounded-md" />
+        </div>
+        <div className="rounded-2xl border border-stone/35 bg-white/76 p-5 md:p-6">
+          <Skeleton className="h-6 w-40 rounded-md" />
+          <Skeleton className="mt-4 h-11 w-full rounded-xl" />
+          <Skeleton className="mt-3 h-20 w-full rounded-xl" />
+          <Skeleton className="mt-3 h-11 w-full rounded-xl" />
+        </div>
+        <div className="rounded-2xl border border-stone/35 bg-white/76 p-5 md:p-6">
+          <Skeleton className="h-6 w-32 rounded-md" />
+          <div className="mt-4 space-y-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={index} className="h-16 w-full rounded-xl" />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -285,7 +353,7 @@ export default function GraphSettingsPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-semibold text-earth tracking-tight">Settings</h1>
         <p className="text-sm text-bark/55 mt-1">
-          Configure this tree and manage your account details.
+          Configure this tree and manage membership.
         </p>
       </div>
 
@@ -365,6 +433,39 @@ export default function GraphSettingsPage() {
             <h2 className="text-xl font-semibold text-earth">Members</h2>
           </div>
 
+          <div className="mb-4 rounded-2xl border border-moss/25 bg-gradient-to-br from-leaf/10 via-moss/10 to-white/90 p-4 md:p-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-bark/50">Access</p>
+                <h3 className="mt-1 text-lg font-semibold tracking-tight text-earth">Manage Invites</h3>
+                <p className="mt-1 text-sm text-bark/60">
+                  Invite relatives, share claim links, and monitor invite status.
+                </p>
+              </div>
+              <Link
+                href={`/${graphId}/invites`}
+                className="tap-target inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-moss to-leaf px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-95"
+              >
+                <Users className="h-4 w-4" />
+                Open Invites
+              </Link>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-stone/30 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-bark/45">Pending</p>
+                <p className="text-lg font-semibold leading-tight text-earth">{inviteSummary.pending}</p>
+              </div>
+              <div className="rounded-xl border border-stone/30 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-bark/45">Accepted</p>
+                <p className="text-lg font-semibold leading-tight text-earth">{inviteSummary.accepted}</p>
+              </div>
+              <div className="rounded-xl border border-stone/30 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-bark/45">Total</p>
+                <p className="text-lg font-semibold leading-tight text-earth">{inviteSummary.total}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-2">
             {members.map((member) => {
               const isCurrentUser = member.profile_id === currentUserId;
@@ -406,7 +507,7 @@ export default function GraphSettingsPage() {
                     {canManageGraph ? (
                       <button
                         type="button"
-                        onClick={() => void handleRemoveMember(member)}
+                        onClick={() => setPendingRemoveMember(member)}
                         disabled={isRemoving}
                         className="px-2.5 py-1.5 rounded-lg border border-error/30 text-error text-xs hover:bg-error/10 transition-colors disabled:opacity-60"
                       >
@@ -419,18 +520,6 @@ export default function GraphSettingsPage() {
             })}
           </div>
         </section>
-
-        {currentUserProfile ? (
-          <ProfileEditorForm
-            profile={currentUserProfile as EditableProfile}
-            title="My Account"
-            description="This updates your claimed identity across all trees."
-            submitLabel="Save Account"
-            onSaved={() => {
-              void loadSettings();
-            }}
-          />
-        ) : null}
 
         {canManageGraph ? (
           <section className="rounded-2xl border border-error/35 bg-white/76 p-5 md:p-6">
@@ -445,7 +534,7 @@ export default function GraphSettingsPage() {
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               type="button"
-              onClick={() => void handleDeleteGraph()}
+              onClick={() => setShowDeleteGraphConfirm(true)}
               disabled={deletingGraph}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-error text-white text-sm font-medium disabled:opacity-60"
             >
@@ -459,6 +548,79 @@ export default function GraphSettingsPage() {
           </section>
         ) : null}
       </div>
+
+      <MobileActionSheet
+        open={Boolean(pendingRemoveMember)}
+        onClose={() => setPendingRemoveMember(null)}
+        title="Remove Member"
+        ariaLabel="Remove member confirmation"
+        className="md:max-w-sm"
+      >
+        <div className="mobile-sheet-body pt-4 space-y-4">
+          <p className="text-sm text-bark/70 leading-relaxed">
+            Remove{' '}
+            <span className="font-medium text-earth">
+              {pendingRemoveMember ? formatProfileName(pendingRemoveMember.profile) : 'this member'}
+            </span>{' '}
+            from this tree?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPendingRemoveMember(null)}
+              className="tap-target flex-1 py-3 rounded-xl border border-stone/40 text-sm font-medium text-earth hover:bg-stone/20 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmRemoveMember()}
+              disabled={
+                !pendingRemoveMember ||
+                removingMemberId === pendingRemoveMember.id
+              }
+              className="tap-target flex-1 py-3 rounded-xl bg-error text-white text-sm font-medium disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {pendingRemoveMember && removingMemberId === pendingRemoveMember.id ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : null}
+              Remove
+            </button>
+          </div>
+        </div>
+      </MobileActionSheet>
+
+      <MobileActionSheet
+        open={showDeleteGraphConfirm}
+        onClose={() => setShowDeleteGraphConfirm(false)}
+        title="Delete Tree"
+        ariaLabel="Delete tree confirmation"
+        className="md:max-w-sm"
+      >
+        <div className="mobile-sheet-body pt-4 space-y-4">
+          <p className="text-sm text-bark/70 leading-relaxed">
+            Delete this tree and all related data? This action cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowDeleteGraphConfirm(false)}
+              className="tap-target flex-1 py-3 rounded-xl border border-stone/40 text-sm font-medium text-earth hover:bg-stone/20 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmDeleteGraph()}
+              disabled={deletingGraph}
+              className="tap-target flex-1 py-3 rounded-xl bg-error text-white text-sm font-medium disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {deletingGraph ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Delete
+            </button>
+          </div>
+        </div>
+      </MobileActionSheet>
     </div>
   );
 }

@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { ClientRuntime } from '@/components/system/ClientRuntime';
 
 const inter = Inter({
   subsets: ["latin"],
@@ -22,6 +23,15 @@ export const metadata: Metadata = {
       "A private, beautiful space where your family grows together.",
     type: "website",
   },
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://branches-azure.vercel.app'),
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
@@ -30,8 +40,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} antialiased`}>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} antialiased min-h-full`}>
+        <ClientRuntime />
+        {children}
+      </body>
     </html>
   );
 }
