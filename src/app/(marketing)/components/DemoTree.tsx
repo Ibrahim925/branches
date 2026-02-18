@@ -35,19 +35,22 @@ interface ConnectorGeometry {
   isAnchor: boolean;
 }
 
-interface DemoEdgeData {
+interface DemoEdgeData extends Record<string, unknown> {
   type: 'parent_child' | 'partnership';
   connector?: ConnectorMeta;
   connectorGeometry?: ConnectorGeometry;
 }
 
-interface DemoHubData {
+interface DemoHubData extends Record<string, unknown> {
   hub: {
     hubKind: FamilyKind;
     parentIds: string[];
     familyKey: string;
   };
 }
+
+type DemoTreeNode = Node<DemoNodeData | DemoHubData>;
+type DemoTreeEdge = Edge<DemoEdgeData> & { data: DemoEdgeData };
 
 interface DemoNodeData extends Record<string, unknown> {
   label: string;
@@ -157,7 +160,7 @@ const DEMO_NODES: Node<DemoNodeData>[] = [
   },
 ];
 
-const RAW_DEMO_EDGES: Edge[] = [
+const RAW_DEMO_EDGES: DemoTreeEdge[] = [
   { id: 'e1-3', source: '1', target: '3', type: 'custom', data: { type: 'parent_child' }, animated: false, style: { stroke: '#8B9D77', strokeWidth: 2 } },
   { id: 'e2-3', source: '2', target: '3', type: 'custom', data: { type: 'parent_child' }, animated: false, style: { stroke: '#8B9D77', strokeWidth: 2 } },
   { id: 'e1-5', source: '1', target: '5', type: 'custom', data: { type: 'parent_child' }, animated: false, style: { stroke: '#8B9D77', strokeWidth: 2 } },
@@ -185,28 +188,32 @@ function connectorData(
   };
 }
 
-function centerX(node: Node) {
+function centerX(node: DemoTreeNode) {
   return node.type === 'family_hub' ? node.position.x : node.position.x + W / 2;
 }
 
-function topY(node: Node) {
+function topY(node: DemoTreeNode) {
   return node.position.y;
 }
 
-function bottomY(node: Node) {
+function bottomY(node: DemoTreeNode) {
   return node.type === 'family_hub' ? node.position.y : node.position.y + H;
 }
 
-function buildDemoGraph() {
-  const baseNodes: Node[] = DEMO_NODES.map((node) => ({ ...node, data: { ...(node.data as DemoNodeData) } }));
-  const baseEdges: Edge[] = RAW_DEMO_EDGES.map((edge) => ({ ...edge, data: { ...(edge.data as DemoEdgeData) } }));
+function isDemoHubData(data: DemoNodeData | DemoHubData): data is DemoHubData {
+  return typeof (data as DemoHubData).hub === 'object' && (data as DemoHubData).hub !== null;
+}
 
-  const hubs: Node[] = [];
-  const syntheticEdges: Edge[] = [];
+function buildDemoGraph() {
+  const baseNodes: DemoTreeNode[] = DEMO_NODES.map((node) => ({ ...node, data: { ...node.data } }));
+  const baseEdges: DemoTreeEdge[] = RAW_DEMO_EDGES.map((edge) => ({ ...edge, data: { ...edge.data } }));
+
+  const hubs: DemoTreeNode[] = [];
+  const syntheticEdges: DemoTreeEdge[] = [];
   const rewiredEdgeIds = new Set<string>();
 
-  const parentChildEdges = baseEdges.filter((edge) => (edge.data as DemoEdgeData).type === 'parent_child');
-  const partnershipEdges = baseEdges.filter((edge) => (edge.data as DemoEdgeData).type === 'partnership');
+  const parentChildEdges = baseEdges.filter((edge) => edge.data?.type === 'parent_child');
+  const partnershipEdges = baseEdges.filter((edge) => edge.data?.type === 'partnership');
 
   function createHubNode(hubId: string, familyKey: string, hubKind: FamilyKind, parentIds: string[]) {
     hubs.push({
@@ -272,7 +279,7 @@ function buildDemoGraph() {
 
   // Pass B: single parent with 2+ children.
   const remainingParentEdges = parentChildEdges.filter((edge) => !rewiredEdgeIds.has(edge.id));
-  const childrenByParent = new Map<string, Edge[]>();
+  const childrenByParent = new Map<string, DemoTreeEdge[]>();
 
   remainingParentEdges.forEach((edge) => {
     const bucket = childrenByParent.get(edge.source) || [];
@@ -317,10 +324,12 @@ function buildDemoGraph() {
   // Position demo hubs based on parent geometry.
   finalNodes.forEach((node) => {
     if (node.type !== 'family_hub') return;
-    const hubMeta = (node.data as DemoHubData).hub;
+    const hubData = node.data;
+    if (!hubData || !isDemoHubData(hubData)) return;
+    const hubMeta = hubData.hub;
     const parentNodes = hubMeta.parentIds
       .map((parentId) => nodeById.get(parentId))
-      .filter((parent): parent is Node => Boolean(parent));
+      .filter((parent): parent is DemoTreeNode => Boolean(parent));
 
     if (hubMeta.hubKind === 'partner' && parentNodes.length >= 2) {
       const p1 = parentNodes[0];
@@ -340,7 +349,7 @@ function buildDemoGraph() {
   const routedEdges = [...baseEdges.filter((edge) => !rewiredEdgeIds.has(edge.id)), ...syntheticEdges].map((edge) => {
     const sourceNode = nodeById.get(edge.source);
     const targetNode = nodeById.get(edge.target);
-    const edgeData = edge.data as DemoEdgeData | undefined;
+    const edgeData = edge.data;
     const connector = edgeData?.connector;
 
     if (edgeData?.type === 'partnership' && sourceNode && targetNode) {
@@ -382,9 +391,9 @@ function buildDemoGraph() {
     return edge;
   });
 
-  const groups = new Map<string, Edge[]>();
+  const groups = new Map<string, DemoTreeEdge[]>();
   routedEdges.forEach((edge) => {
-    const connector = (edge.data as DemoEdgeData | undefined)?.connector;
+    const connector = edge.data?.connector;
     if (!connector || connector.connectorRole !== 'hub_to_child') return;
     const bucket = groups.get(connector.familyKey) || [];
     bucket.push(edge);
@@ -418,7 +427,7 @@ function buildDemoGraph() {
   });
 
   const finalEdges = routedEdges.map((edge) => {
-    const edgeData = edge.data as DemoEdgeData | undefined;
+    const edgeData = edge.data;
     const connector = edgeData?.connector;
     if (!connector || connector.connectorRole !== 'hub_to_child') return edge;
 
@@ -448,8 +457,8 @@ function buildDemoGraph() {
 const DEMO_GRAPH = buildDemoGraph();
 
 function DemoTreeInner() {
-  const [nodes] = useNodesState<Node>(DEMO_GRAPH.nodes);
-  const [edges] = useEdgesState<Edge>(DEMO_GRAPH.edges);
+  const [nodes] = useNodesState<DemoTreeNode>(DEMO_GRAPH.nodes);
+  const [edges] = useEdgesState<DemoTreeEdge>(DEMO_GRAPH.edges);
   const { fitView } = useReactFlow();
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval>>(null);
