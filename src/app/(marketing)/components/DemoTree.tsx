@@ -53,41 +53,132 @@ type DemoTreeNode = Node<DemoNodeData | DemoHubData>;
 type DemoTreeEdge = Edge<DemoEdgeData> & { data: DemoEdgeData };
 
 interface DemoNodeData extends Record<string, unknown> {
-  label: string;
-  bg: string;
-  color: string;
+  name: string;
+  birthYear?: string;
+  avatarUrl: string;
+  isClaimed: boolean;
+  isLiving: boolean;
   ring?: boolean;
 }
 
 function DemoNode({ data }: NodeProps<Node<DemoNodeData>>) {
+  const initial = data.name.trim().charAt(0).toUpperCase() || '?';
   return (
     <div
       style={{
-        width: 64,
-        height: 64,
-        borderRadius: '50%',
-        background: data.bg,
-        color: data.color,
+        width: W,
+        height: H,
+        borderRadius: 24,
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,243,236,0.98) 58%, rgba(239,232,221,0.98) 100%)',
+        border: '1px solid rgba(138,132,124,0.35)',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 11,
-        fontWeight: 600,
-        textAlign: 'center',
-        lineHeight: 1.2,
-        padding: 6,
+        justifyContent: 'flex-start',
+        padding: 14,
+        position: 'relative',
+        overflow: 'hidden',
         boxShadow: data.ring
-          ? '0 0 0 3px #A8C090, 0 6px 20px rgba(168,192,144,0.4)'
-          : '0 4px 12px rgba(0,0,0,0.1)',
+          ? '0 0 0 2px rgba(219,159,97,0.45), 0 18px 32px rgba(88,70,42,0.22)'
+          : '0 12px 28px rgba(88,70,42,0.14)',
       }}
     >
+      <div
+        style={{
+          position: 'absolute',
+          left: 14,
+          right: 14,
+          top: 12,
+          height: 48,
+          borderRadius: 16,
+          background: 'linear-gradient(90deg, rgba(255,255,255,0.62), rgba(255,255,255,0.12))',
+          pointerEvents: 'none',
+        }}
+      />
       <Handle type="target" position={Position.Top} id="target" style={{ opacity: 0, width: 1, height: 1 }} />
       <Handle type="source" position={Position.Bottom} id="source" style={{ opacity: 0, width: 1, height: 1 }} />
       <Handle type="target" position={Position.Left} id="p-left-target" style={{ opacity: 0, width: 1, height: 1 }} />
       <Handle type="source" position={Position.Left} id="p-left-source" style={{ opacity: 0, width: 1, height: 1 }} />
       <Handle type="target" position={Position.Right} id="p-right-target" style={{ opacity: 0, width: 1, height: 1 }} />
       <Handle type="source" position={Position.Right} id="p-right-source" style={{ opacity: 0, width: 1, height: 1 }} />
-      {data.label}
+
+      <div
+        style={{
+          width: 68,
+          height: 68,
+          position: 'relative',
+          borderRadius: '50%',
+          overflow: 'hidden',
+          border: '2px solid rgba(168,192,144,0.8)',
+          boxShadow: '0 5px 16px rgba(88,70,42,0.2)',
+          background: 'linear-gradient(135deg, #8B9D77, #A8C090)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+          fontWeight: 700,
+          fontSize: 22,
+          zIndex: 1,
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={data.avatarUrl}
+          alt={data.name}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          onError={(event) => {
+            event.currentTarget.style.display = 'none';
+          }}
+        />
+        <span style={{ position: 'absolute' }}>{initial}</span>
+      </div>
+
+      <div
+        style={{
+          marginTop: 12,
+          width: '100%',
+          textAlign: 'center',
+          color: '#3f3f3f',
+          fontSize: 10,
+          fontWeight: 600,
+          lineHeight: 1.35,
+          minHeight: 46,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          gap: 3,
+        }}
+      >
+        <p style={{ margin: 0, fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(84,71,54,0.45)' }}>
+          Family Member
+        </p>
+        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: 0.1 }}>
+          {data.name}
+        </p>
+        {data.birthYear ? (
+          <p style={{ margin: 0, fontSize: 10, color: 'rgba(84,71,54,0.55)' }}>{data.birthYear}</p>
+        ) : null}
+      </div>
+
+      <div
+        style={{
+          marginTop: 'auto',
+          width: '100%',
+          borderRadius: 999,
+          border: '1px solid rgba(138,132,124,0.34)',
+          background: 'rgba(255,255,255,0.78)',
+          padding: '6px 10px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: 10,
+          color: 'rgba(84,71,54,0.72)',
+          fontWeight: 600,
+        }}
+      >
+        <span>{data.isLiving ? 'Living' : 'Passed'}</span>
+        <span>{data.isClaimed ? 'Claimed' : 'Unclaimed'}</span>
+      </div>
     </div>
   );
 }
@@ -101,12 +192,12 @@ const edgeTypes = {
   custom: CustomEdge,
 };
 
-const W = 64;
-const H = 64;
+const W = 156;
+const H = 208;
 const GAP = 40;
-const ROW0_Y = 20;
-const ROW1_Y = 140;
-const ROW2_Y = 260;
+const ROW0_Y = 18;
+const ROW1_Y = 284;
+const ROW2_Y = 550;
 const cx = 340;
 
 const DEMO_NODES: Node<DemoNodeData>[] = [
@@ -114,49 +205,98 @@ const DEMO_NODES: Node<DemoNodeData>[] = [
     id: '1',
     type: 'demo',
     position: { x: cx - W - GAP / 2, y: ROW0_Y },
-    data: { label: 'Grandpa\nJoe', bg: 'linear-gradient(135deg, #8B9D77, #A8C090)', color: '#fff' },
+    data: {
+      name: 'Joseph Hale',
+      birthYear: '1948',
+      avatarUrl: 'https://images.pexels.com/photos/614810/pexels-photo-614810.jpeg?auto=compress&cs=tinysrgb&w=400',
+      isClaimed: true,
+      isLiving: true,
+    },
   },
   {
     id: '2',
     type: 'demo',
     position: { x: cx + GAP / 2, y: ROW0_Y },
-    data: { label: 'Grandma\nRose', bg: 'linear-gradient(135deg, #D4A373, #E8C9A0)', color: '#fff' },
+    data: {
+      name: 'Rosa Hale',
+      birthYear: '1950',
+      avatarUrl: 'https://images.pexels.com/photos/733872/pexels-photo-733872.jpeg?auto=compress&cs=tinysrgb&w=400',
+      isClaimed: true,
+      isLiving: true,
+    },
   },
   {
     id: '3',
     type: 'demo',
     position: { x: cx - W * 2 - GAP, y: ROW1_Y },
-    data: { label: 'Dad', bg: 'linear-gradient(135deg, #5D4E37, #8B7355)', color: '#fff' },
+    data: {
+      name: 'Daniel Hale',
+      birthYear: '1978',
+      avatarUrl: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=400',
+      isClaimed: true,
+      isLiving: true,
+    },
   },
   {
     id: '4',
     type: 'demo',
     position: { x: cx - W - GAP / 2 + 10, y: ROW1_Y },
-    data: { label: 'Mom', bg: 'linear-gradient(135deg, #C4D4A5, #A8C090)', color: '#3A3A3A' },
+    data: {
+      name: 'Maya Hale',
+      birthYear: '1980',
+      avatarUrl: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=400',
+      isClaimed: true,
+      isLiving: true,
+    },
   },
   {
     id: '5',
     type: 'demo',
     position: { x: cx + W + GAP, y: ROW1_Y },
-    data: { label: 'Uncle\nBen', bg: 'linear-gradient(135deg, #8B9D77, #6B8B5E)', color: '#fff' },
+    data: {
+      name: 'Benjamin Hale',
+      birthYear: '1984',
+      avatarUrl: 'https://images.pexels.com/photos/91227/pexels-photo-91227.jpeg?auto=compress&cs=tinysrgb&w=400',
+      isClaimed: false,
+      isLiving: true,
+    },
   },
   {
     id: '6',
     type: 'demo',
     position: { x: cx - W * 2 - GAP - 15, y: ROW2_Y },
-    data: { label: 'You', bg: 'linear-gradient(135deg, #D4A373, #C8956E)', color: '#fff', ring: true },
+    data: {
+      name: 'You',
+      birthYear: '2007',
+      avatarUrl: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=400',
+      isClaimed: true,
+      isLiving: true,
+      ring: true,
+    },
   },
   {
     id: '7',
     type: 'demo',
     position: { x: cx - W / 2, y: ROW2_Y },
-    data: { label: 'Sister', bg: 'linear-gradient(135deg, #A8C090, #C4D4A5)', color: '#3A3A3A' },
+    data: {
+      name: 'Sofia Hale',
+      birthYear: '2010',
+      avatarUrl: 'https://images.pexels.com/photos/1130626/pexels-photo-1130626.jpeg?auto=compress&cs=tinysrgb&w=400',
+      isClaimed: true,
+      isLiving: true,
+    },
   },
   {
     id: '8',
     type: 'demo',
     position: { x: cx + W + GAP, y: ROW2_Y },
-    data: { label: 'Cousin\nLily', bg: 'linear-gradient(135deg, #E8C9A0, #D4A373)', color: '#3A3A3A' },
+    data: {
+      name: 'Lily Hale',
+      birthYear: '2012',
+      avatarUrl: 'https://images.pexels.com/photos/1587009/pexels-photo-1587009.jpeg?auto=compress&cs=tinysrgb&w=400',
+      isClaimed: false,
+      isLiving: true,
+    },
   },
 ];
 
