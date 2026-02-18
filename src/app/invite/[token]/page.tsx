@@ -27,6 +27,26 @@ function buildInviteCopy(
   };
 }
 
+function resolvePublicAppUrl(): string {
+  const envCandidates = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : null,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+  ];
+
+  const rawUrl = envCandidates.find((candidate) => Boolean(candidate)) || 'https://branches-azure.vercel.app';
+
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.origin;
+  } catch {
+    return 'https://branches-azure.vercel.app';
+  }
+}
+
 export async function generateMetadata({
   params,
 }: InvitePageProps): Promise<Metadata> {
@@ -36,26 +56,37 @@ export async function generateMetadata({
   const treeName = preview?.graph_name ?? 'a family tree';
   const inviteeName = formatInviteeName(preview);
   const { title, description } = buildInviteCopy(treeName, inviteeName);
-  const imageUrl = `/invite/${token}/opengraph-image`;
+  const appUrl = resolvePublicAppUrl();
+  const canonicalUrl = new URL(`/invite/${token}`, appUrl).toString();
+  const imageUrl = new URL(`/invite/${token}/opengraph-image`, appUrl).toString();
 
   return {
     title,
     description,
-    robots: {
-      index: false,
-      follow: false,
-    },
     openGraph: {
       title,
       description,
+      url: canonicalUrl,
+      siteName: 'Branches',
       type: 'website',
-      images: [{ url: imageUrl, width: 1200, height: 630 }],
+      images: [
+        {
+          url: imageUrl,
+          width: 1200,
+          height: 630,
+          alt: `Invitation preview for ${treeName}`,
+          type: 'image/png',
+        },
+      ],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
       images: [imageUrl],
+    },
+    alternates: {
+      canonical: canonicalUrl,
     },
   };
 }
