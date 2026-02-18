@@ -130,6 +130,7 @@ export function NodeDetailSidebar({
   const [hasClaimedNodeInGraph, setHasClaimedNodeInGraph] = useState(false);
   const [loadingClaimStatus, setLoadingClaimStatus] = useState(true);
   const [claimingNode, setClaimingNode] = useState(false);
+  const [unclaimingNode, setUnclaimingNode] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
   const formatProfileName = useCallback(
@@ -531,6 +532,33 @@ export function NodeDetailSidebar({
     setActionNotice('This profile is now linked to your account.');
     setHasClaimedNodeInGraph(true);
     setClaimingNode(false);
+    void loadNode();
+    onUpdate?.();
+  }
+
+  async function handleUnclaimNode() {
+    if (!node || unclaimingNode || node.claimed_by !== currentUserId) return;
+
+    if (!confirm('Unclaim this profile from your account?')) return;
+
+    setUnclaimingNode(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    const { error } = await supabase.rpc('unclaim_tree_node', {
+      _graph_id: graphId,
+      _node_id: node.id,
+    });
+
+    if (error) {
+      setActionError(error.message || 'Could not unclaim this profile.');
+      setUnclaimingNode(false);
+      return;
+    }
+
+    setActionNotice('You have unclaimed this profile.');
+    setHasClaimedNodeInGraph(false);
+    setUnclaimingNode(false);
     void loadNode();
     onUpdate?.();
   }
@@ -1152,6 +1180,22 @@ export function NodeDetailSidebar({
                   {claimingNode ? 'Claiming…' : 'Claim This Profile'}
                 </button>
               )}
+
+              {node.claimed_by === currentUserId ? (
+                <button
+                  type="button"
+                  onClick={() => void handleUnclaimNode()}
+                  disabled={unclaimingNode}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-stone/50 text-earth text-sm hover:bg-stone/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {unclaimingNode ? (
+                    <Loader2 className="w-4 h-4 text-bark/60 animate-spin" />
+                  ) : (
+                    <Link2 className="w-4 h-4 text-bark/60" />
+                  )}
+                  {unclaimingNode ? 'Unclaiming…' : 'Unclaim Profile'}
+                </button>
+              ) : null}
 
               {!node.claimed_by &&
               !loadingClaimStatus &&
