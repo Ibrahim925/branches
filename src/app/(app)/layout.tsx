@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -32,9 +32,10 @@ const bottomNavItems = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const segments = pathname.split('/').filter(Boolean);
   const firstSegment = segments[0] || '';
@@ -42,6 +43,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const graphId = isGraphRoute ? firstSegment : null;
   const isDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
   const isProfileRoute = pathname === '/profile' || pathname.startsWith('/profile/');
+  const myProfileHref = currentUserId ? `/profile/${currentUserId}` : '/profile';
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCurrentUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!active) return;
+      setCurrentUserId(user?.id || null);
+    }
+
+    void loadCurrentUser();
+
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -170,7 +191,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
 
-          <Link href="/profile">
+          <Link href={myProfileHref}>
             <div
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
                 isProfileRoute
@@ -209,18 +230,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <span className="text-sm font-semibold text-earth">Branches</span>
         </div>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={pathname}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-            className="h-full"
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="h-full"
+        >
+          {children}
+        </motion.div>
       </main>
     </div>
   );
