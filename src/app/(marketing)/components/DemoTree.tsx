@@ -62,7 +62,6 @@ interface DemoNodeData extends Record<string, unknown> {
 }
 
 function DemoNode({ data }: NodeProps<Node<DemoNodeData>>) {
-  const initial = data.name.trim().charAt(0).toUpperCase() || '?';
   return (
     <div
       style={{
@@ -131,7 +130,6 @@ function DemoNode({ data }: NodeProps<Node<DemoNodeData>>) {
             event.currentTarget.style.display = 'none';
           }}
         />
-        <span style={{ position: 'absolute' }}>{initial}</span>
       </div>
 
       <div
