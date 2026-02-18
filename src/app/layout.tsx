@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   title: "Branches - Your Family Tree, Reimagined",
   description:
     "A private, beautiful space where your family grows together. Real-time collaboration, live chat, and stunning tree visualization.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
   openGraph: {
     title: "Branches - Your Family Tree, Reimagined",
     description:
