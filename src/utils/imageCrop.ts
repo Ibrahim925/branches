@@ -43,6 +43,6 @@ export function buildImageCropStyle(
   return {
     objectPosition: `${resolved.focusX}% ${resolved.focusY}%`,
     transform: `scale(${resolved.zoom})`,
-    transformOrigin: 'center center',
+    transformOrigin: `${resolved.focusX}% ${resolved.focusY}%`,
   };
 }
