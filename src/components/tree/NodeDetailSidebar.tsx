@@ -23,6 +23,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { CreateMemoryModal } from '@/components/memories/CreateMemoryModal';
 import { buildStoryExcerpt } from '@/utils/markdown';
+import { buildImageCropStyle } from '@/utils/imageCrop';
 
 interface NodeData {
   id: string;
@@ -32,6 +33,9 @@ interface NodeData {
   death_date: string | null;
   bio: string | null;
   avatar_url: string | null;
+  avatar_zoom?: number | null;
+  avatar_focus_x?: number | null;
+  avatar_focus_y?: number | null;
   claimed_by: string | null;
   created_at: string;
 }
@@ -43,6 +47,9 @@ interface ClaimedProfileData {
   display_name: string | null;
   email: string | null;
   avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
   gender: string | null;
   bio: string | null;
   birthdate: string | null;
@@ -176,7 +183,7 @@ export function NodeDetailSidebar({
         const { data: profileRow } = await supabase
           .from('profiles')
           .select(
-            'id,first_name,last_name,display_name,email,avatar_url,gender,bio,birthdate'
+            'id,first_name,last_name,display_name,email,avatar_url,avatar_zoom,avatar_focus_x,avatar_focus_y,gender,bio,birthdate'
           )
           .eq('id', mergedNode.claimed_by)
           .maybeSingle();
@@ -190,6 +197,9 @@ export function NodeDetailSidebar({
             first_name: resolvedNames.first_name,
             last_name: resolvedNames.last_name,
             avatar_url: profileForClaimedNode.avatar_url,
+            avatar_zoom: profileForClaimedNode.avatar_zoom,
+            avatar_focus_x: profileForClaimedNode.avatar_focus_x,
+            avatar_focus_y: profileForClaimedNode.avatar_focus_y,
             bio: profileForClaimedNode.bio,
             birthdate: profileForClaimedNode.birthdate,
           };
@@ -832,6 +842,14 @@ export function NodeDetailSidebar({
                 width={96}
                 height={96}
                 className="object-cover w-full h-full"
+                style={buildImageCropStyle(
+                  {
+                    zoom: node.avatar_zoom,
+                    focusX: node.avatar_focus_x,
+                    focusY: node.avatar_focus_y,
+                  },
+                  { minZoom: 1, maxZoom: 3 }
+                )}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-moss to-leaf text-white font-bold text-3xl">
@@ -915,6 +933,14 @@ export function NodeDetailSidebar({
                       src={avatarPreview}
                       alt="Avatar preview"
                       className="w-full h-full object-cover"
+                      style={buildImageCropStyle(
+                        {
+                          zoom: node.avatar_zoom,
+                          focusX: node.avatar_focus_x,
+                          focusY: node.avatar_focus_y,
+                        },
+                        { minZoom: 1, maxZoom: 3 }
+                      )}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-bark/35">

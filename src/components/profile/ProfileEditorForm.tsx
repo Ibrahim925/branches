@@ -6,6 +6,7 @@ import { Camera, Loader2, Save, Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/client';
+import { buildImageCropStyle, resolveImageCrop } from '@/utils/imageCrop';
 
 export type EditableProfile = {
   id: string;
@@ -14,6 +15,9 @@ export type EditableProfile = {
   last_name: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
   gender: string | null;
   bio: string | null;
   birthdate: string | null;
@@ -36,6 +40,9 @@ type SavedProfileRow = {
   last_name: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
   gender: string | null;
   bio: string | null;
   birthdate: string | null;
@@ -84,6 +91,17 @@ export function ProfileEditorForm({
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(profile.avatar_url);
+  const initialAvatarCrop = resolveImageCrop(
+    {
+      zoom: profile.avatar_zoom,
+      focusX: profile.avatar_focus_x,
+      focusY: profile.avatar_focus_y,
+    },
+    { minZoom: 1, maxZoom: 3 }
+  );
+  const [avatarZoom, setAvatarZoom] = useState(initialAvatarCrop.zoom);
+  const [avatarFocusX, setAvatarFocusX] = useState(initialAvatarCrop.focusX);
+  const [avatarFocusY, setAvatarFocusY] = useState(initialAvatarCrop.focusY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -95,6 +113,9 @@ export function ProfileEditorForm({
     if (!file) return;
 
     setAvatarFile(file);
+    setAvatarZoom(1);
+    setAvatarFocusX(50);
+    setAvatarFocusY(50);
     setError(null);
     setSuccess(null);
 
@@ -132,6 +153,14 @@ export function ProfileEditorForm({
 
     const previousAvatarPath = avatarUrl ? extractProfileAvatarPath(avatarUrl) : null;
     let nextAvatarUrl = avatarUrl;
+    const normalizedAvatarCrop = resolveImageCrop(
+      {
+        zoom: avatarZoom,
+        focusX: avatarFocusX,
+        focusY: avatarFocusY,
+      },
+      { minZoom: 1, maxZoom: 3 }
+    );
 
     if (avatarFile) {
       const ext = avatarFile.name.split('.').pop() || 'jpg';
@@ -167,6 +196,9 @@ export function ProfileEditorForm({
       birthdate: birthdate || null,
       bio: bio.trim() || null,
       avatar_url: nextAvatarUrl,
+      avatar_zoom: normalizedAvatarCrop.zoom,
+      avatar_focus_x: normalizedAvatarCrop.focusX,
+      avatar_focus_y: normalizedAvatarCrop.focusY,
       onboarding_completed:
         markOnboardingComplete || profile.onboarding_completed,
       updated_at: new Date().toISOString(),
@@ -177,7 +209,7 @@ export function ProfileEditorForm({
       .update(updates)
       .eq('id', profile.id)
       .select(
-        'id,email,first_name,last_name,display_name,avatar_url,gender,bio,birthdate,onboarding_completed'
+        'id,email,first_name,last_name,display_name,avatar_url,avatar_zoom,avatar_focus_x,avatar_focus_y,gender,bio,birthdate,onboarding_completed'
       )
       .single();
 
@@ -193,12 +225,18 @@ export function ProfileEditorForm({
         first_name: trimmedFirstName,
         last_name: trimmedLastName || null,
         avatar_url: nextAvatarUrl,
+        avatar_zoom: normalizedAvatarCrop.zoom,
+        avatar_focus_x: normalizedAvatarCrop.focusX,
+        avatar_focus_y: normalizedAvatarCrop.focusY,
       },
     });
 
     const nextProfile = updatedProfile as SavedProfileRow;
     setAvatarUrl(nextProfile.avatar_url);
     setAvatarPreview(nextProfile.avatar_url);
+    setAvatarZoom(nextProfile.avatar_zoom ?? normalizedAvatarCrop.zoom);
+    setAvatarFocusX(nextProfile.avatar_focus_x ?? normalizedAvatarCrop.focusX);
+    setAvatarFocusY(nextProfile.avatar_focus_y ?? normalizedAvatarCrop.focusY);
     setAvatarFile(null);
     setSuccess('Profile updated.');
     setSaving(false);
@@ -229,6 +267,14 @@ export function ProfileEditorForm({
               src={avatarPreview}
               alt="Profile"
               className="w-full h-full object-cover"
+              style={buildImageCropStyle(
+                {
+                  zoom: avatarZoom,
+                  focusX: avatarFocusX,
+                  focusY: avatarFocusY,
+                },
+                { minZoom: 1, maxZoom: 3 }
+              )}
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-moss to-leaf text-white flex items-center justify-center text-2xl font-semibold">
@@ -253,6 +299,55 @@ export function ProfileEditorForm({
             Upload photo
           </button>
           <p className="text-xs text-bark/45">PNG or JPG recommended.</p>
+          {avatarPreview ? (
+            <div className="pt-1 space-y-1.5 min-w-[220px]">
+              <label className="text-[11px] text-bark/55 flex items-center gap-2">
+                <span className="w-8 shrink-0">Zoom</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.01}
+                  value={avatarZoom}
+                  onChange={(event) => setAvatarZoom(Number(event.target.value))}
+                  className="flex-1 accent-moss"
+                />
+                <span className="w-10 text-right tabular-nums text-bark/45">
+                  {avatarZoom.toFixed(2)}x
+                </span>
+              </label>
+              <label className="text-[11px] text-bark/55 flex items-center gap-2">
+                <span className="w-8 shrink-0">X</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={avatarFocusX}
+                  onChange={(event) => setAvatarFocusX(Number(event.target.value))}
+                  className="flex-1 accent-moss"
+                />
+                <span className="w-10 text-right tabular-nums text-bark/45">
+                  {Math.round(avatarFocusX)}%
+                </span>
+              </label>
+              <label className="text-[11px] text-bark/55 flex items-center gap-2">
+                <span className="w-8 shrink-0">Y</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={avatarFocusY}
+                  onChange={(event) => setAvatarFocusY(Number(event.target.value))}
+                  className="flex-1 accent-moss"
+                />
+                <span className="w-10 text-right tabular-nums text-bark/45">
+                  {Math.round(avatarFocusY)}%
+                </span>
+              </label>
+            </div>
+          ) : null}
         </div>
       </div>
 

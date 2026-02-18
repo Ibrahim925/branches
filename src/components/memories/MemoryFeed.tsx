@@ -13,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { buildStoryExcerpt, extractFirstMarkdownImage } from '@/utils/markdown';
+import { buildImageCropStyle } from '@/utils/imageCrop';
 
 type Memory = {
   id: string;
@@ -20,6 +21,9 @@ type Memory = {
   title: string | null;
   content: string | null;
   media_url: string | null;
+  media_zoom: number | null;
+  media_focus_x: number | null;
+  media_focus_y: number | null;
   event_date: string | null;
   tags: string[];
   created_at: string;
@@ -162,12 +166,20 @@ export function MemoryFeed({
             }`}
           >
             {memory.media_url && memory.type === 'photo' && (
-              <div className="w-full aspect-video overflow-hidden">
+              <div className="w-full aspect-[4/5] overflow-hidden bg-stone/15">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={memory.media_url}
                   alt={memory.title || 'Memory'}
                   className="w-full h-full object-cover"
+                  style={buildImageCropStyle(
+                    {
+                      zoom: memory.media_zoom,
+                      focusX: memory.media_focus_x,
+                      focusY: memory.media_focus_y,
+                    },
+                    { minZoom: 1, maxZoom: 3 }
+                  )}
                 />
               </div>
             )}

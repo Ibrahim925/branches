@@ -9,6 +9,7 @@ import {
   FAMILY_TREE_NODE_WIDTH,
   type PositionedFamilyNode,
 } from '@/utils/familyTreeLayout';
+import { buildImageCropStyle } from '@/utils/imageCrop';
 
 type RelationshipKind = 'parent' | 'child' | 'spouse';
 
@@ -141,6 +142,14 @@ export function FamilyTreeCard({
               src={node.avatarUrl || ''}
               alt={`${node.firstName} ${node.lastName}`}
               className="w-full h-full object-cover"
+              style={buildImageCropStyle(
+                {
+                  zoom: node.avatarZoom,
+                  focusX: node.avatarFocusX,
+                  focusY: node.avatarFocusY,
+                },
+                { minZoom: 1, maxZoom: 3 }
+              )}
               onError={() => setFailedAvatarSrc(node.avatarUrl || null)}
             />
           ) : (

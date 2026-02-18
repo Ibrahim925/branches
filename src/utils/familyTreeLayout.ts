@@ -17,6 +17,9 @@ export interface FamilyTreeNodeInput {
   firstName: string;
   lastName: string;
   avatarUrl?: string;
+  avatarZoom?: number | null;
+  avatarFocusX?: number | null;
+  avatarFocusY?: number | null;
   birthYear: number | null;
   isAlive: boolean;
   isClaimed: boolean;

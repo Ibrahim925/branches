@@ -5,6 +5,7 @@ import { Calendar, UserRound } from 'lucide-react';
 
 import { ProfileEditorForm } from '@/components/profile/ProfileEditorForm';
 import { createClient } from '@/lib/supabase/server';
+import { buildImageCropStyle } from '@/utils/imageCrop';
 import { buildStoryExcerpt, extractFirstMarkdownImage } from '@/utils/markdown';
 
 type ProfilePageProps = {
@@ -18,6 +19,9 @@ type ProfileRow = {
   display_name: string | null;
   email: string | null;
   avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
   gender: string | null;
   bio: string | null;
   birthdate: string | null;
@@ -53,6 +57,9 @@ type MemoryRow = {
   title: string | null;
   content: string | null;
   media_url: string | null;
+  media_zoom: number | null;
+  media_focus_x: number | null;
+  media_focus_y: number | null;
   created_at: string;
   event_date: string | null;
 };
@@ -98,7 +105,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   const { data: subjectProfile } = await supabase
     .from('profiles')
     .select(
-      'id,first_name,last_name,display_name,email,avatar_url,gender,bio,birthdate,onboarding_completed'
+      'id,first_name,last_name,display_name,email,avatar_url,avatar_zoom,avatar_focus_x,avatar_focus_y,gender,bio,birthdate,onboarding_completed'
     )
     .eq('id', userId)
     .single();
@@ -166,7 +173,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
     sharedGraphIds.length > 0 && taggedMemoryIds.length > 0
       ? await supabase
           .from('memories')
-          .select('id,graph_id,author_id,type,title,content,media_url,created_at,event_date')
+          .select('id,graph_id,author_id,type,title,content,media_url,media_zoom,media_focus_x,media_focus_y,created_at,event_date')
           .in('graph_id', sharedGraphIds)
           .in('id', taggedMemoryIds)
           .order('created_at', { ascending: false })
@@ -207,6 +214,14 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                 src={subjectProfile.avatar_url}
                 alt={subjectName}
                 className="w-full h-full object-cover"
+                style={buildImageCropStyle(
+                  {
+                    zoom: subjectProfile.avatar_zoom,
+                    focusX: subjectProfile.avatar_focus_x,
+                    focusY: subjectProfile.avatar_focus_y,
+                  },
+                  { minZoom: 1, maxZoom: 3 }
+                )}
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-moss to-leaf text-white font-semibold text-2xl flex items-center justify-center">
@@ -279,12 +294,28 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                 className="rounded-2xl border border-stone/35 bg-white/78 overflow-hidden"
               >
                 {previewImage ? (
-                  <div className="w-full aspect-video overflow-hidden">
+                  <div
+                    className={`w-full overflow-hidden ${
+                      memory.type === 'photo' ? 'aspect-[4/5]' : 'aspect-video'
+                    }`}
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={previewImage}
                       alt={memory.title || 'Memory'}
                       className="w-full h-full object-cover"
+                      style={
+                        memory.type === 'photo'
+                          ? buildImageCropStyle(
+                              {
+                                zoom: memory.media_zoom,
+                                focusX: memory.media_focus_x,
+                                focusY: memory.media_focus_y,
+                              },
+                              { minZoom: 1, maxZoom: 3 }
+                            )
+                          : undefined
+                      }
                     />
                   </div>
                 ) : null}

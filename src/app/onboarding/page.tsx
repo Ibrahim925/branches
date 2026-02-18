@@ -37,7 +37,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
   const { data: profileRow } = await supabase
     .from('profiles')
     .select(
-      'id,email,first_name,last_name,display_name,avatar_url,gender,bio,birthdate,onboarding_completed'
+      'id,email,first_name,last_name,display_name,avatar_url,avatar_zoom,avatar_focus_x,avatar_focus_y,gender,bio,birthdate,onboarding_completed'
     )
     .eq('id', user.id)
     .maybeSingle();

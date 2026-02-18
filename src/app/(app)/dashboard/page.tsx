@@ -5,6 +5,7 @@ import { CreateGraphButton } from '@/components/dashboard/CreateGraphButton';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { buildStoryExcerpt } from '@/utils/markdown';
+import { buildImageCropStyle } from '@/utils/imageCrop';
 
 export const metadata: Metadata = {
   title: 'My Trees | Branches',
@@ -35,6 +36,9 @@ type DashboardMemoryRow = {
   title: string | null;
   content: string | null;
   media_url: string | null;
+  media_zoom: number | null;
+  media_focus_x: number | null;
+  media_focus_y: number | null;
   created_at: string;
   event_date: string | null;
 };
@@ -75,7 +79,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     graphIds.length > 0
       ? await supabase
           .from('memories')
-          .select('id,graph_id,author_id,type,title,content,media_url,created_at,event_date')
+          .select('id,graph_id,author_id,type,title,content,media_url,media_zoom,media_focus_x,media_focus_y,created_at,event_date')
           .in('graph_id', graphIds)
           .order('created_at', { ascending: false })
           .limit(24)
@@ -211,12 +215,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     </h3>
 
                     {memory.media_url && memory.type === 'photo' ? (
-                      <div className="mt-3 rounded-xl overflow-hidden border border-stone/25 max-w-xl">
+                      <div className="mt-3 rounded-xl overflow-hidden border border-stone/25 max-w-[340px] aspect-[4/5]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={memory.media_url}
                           alt={memory.title || 'Memory'}
-                          className="w-full h-52 object-cover"
+                          className="w-full h-full object-cover"
+                          style={buildImageCropStyle(
+                            {
+                              zoom: memory.media_zoom,
+                              focusX: memory.media_focus_x,
+                              focusY: memory.media_focus_y,
+                            },
+                            { minZoom: 1, maxZoom: 3 }
+                          )}
                         />
                       </div>
                     ) : null}

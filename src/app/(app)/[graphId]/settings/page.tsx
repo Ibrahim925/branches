@@ -29,6 +29,9 @@ type MemberProfileRow = {
   display_name: string | null;
   email: string | null;
   avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
   gender: string | null;
   bio: string | null;
   birthdate: string | null;
@@ -120,7 +123,7 @@ export default function GraphSettingsPage() {
         ? await supabase
             .from('profiles')
             .select(
-              'id,first_name,last_name,display_name,email,avatar_url,gender,bio,birthdate,onboarding_completed'
+              'id,first_name,last_name,display_name,email,avatar_url,avatar_zoom,avatar_focus_x,avatar_focus_y,gender,bio,birthdate,onboarding_completed'
             )
             .in('id', profileIds)
         : { data: [] };

@@ -22,6 +22,9 @@ type MemoryRow = {
   content: string | null;
   media_url: string | null;
   media_type: string | null;
+  media_zoom: number | null;
+  media_focus_x: number | null;
+  media_focus_y: number | null;
   event_date: string | null;
   tags: string[];
   created_at: string;
@@ -65,6 +68,9 @@ type Memory = {
   title: string | null;
   content: string | null;
   media_url: string | null;
+  media_zoom: number | null;
+  media_focus_x: number | null;
+  media_focus_y: number | null;
   event_date: string | null;
   tags: string[];
   created_at: string;
@@ -295,6 +301,9 @@ export default function MemoriesPage() {
       title: memory.title,
       content: memory.content,
       media_url: memory.media_url,
+      media_zoom: memory.media_zoom,
+      media_focus_x: memory.media_focus_x,
+      media_focus_y: memory.media_focus_y,
       event_date: memory.event_date,
       tags: memory.tags ?? [],
       created_at: memory.created_at,

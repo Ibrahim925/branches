@@ -32,6 +32,9 @@ type RawNodeRecord = {
   death_date: string | null;
   bio: string | null;
   avatar_url: string | null;
+  avatar_zoom?: number | null;
+  avatar_focus_x?: number | null;
+  avatar_focus_y?: number | null;
   claimed_by: string | null;
   x: number | null;
   y: number | null;
@@ -43,6 +46,9 @@ type ClaimedProfileRow = {
   last_name: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  avatar_zoom: number | null;
+  avatar_focus_x: number | null;
+  avatar_focus_y: number | null;
   bio: string | null;
   birthdate: string | null;
 };
@@ -346,7 +352,9 @@ function TreeView({ graphId }: { graphId: string }) {
       claimedProfileIds.length > 0
         ? await supabase
             .from('profiles')
-            .select('id,first_name,last_name,display_name,avatar_url,bio,birthdate')
+            .select(
+              'id,first_name,last_name,display_name,avatar_url,avatar_zoom,avatar_focus_x,avatar_focus_y,bio,birthdate'
+            )
             .in('id', claimedProfileIds)
         : { data: [] };
 
@@ -370,6 +378,9 @@ function TreeView({ graphId }: { graphId: string }) {
         first_name: resolvedName.firstName,
         last_name: resolvedName.lastName,
         avatar_url: profile.avatar_url,
+        avatar_zoom: profile.avatar_zoom,
+        avatar_focus_x: profile.avatar_focus_x,
+        avatar_focus_y: profile.avatar_focus_y,
         bio: profile.bio,
         birthdate: profile.birthdate,
       };
@@ -429,6 +440,9 @@ function TreeView({ graphId }: { graphId: string }) {
         firstName: node.first_name,
         lastName: node.last_name || '',
         avatarUrl: node.avatar_url || undefined,
+        avatarZoom: node.avatar_zoom,
+        avatarFocusX: node.avatar_focus_x,
+        avatarFocusY: node.avatar_focus_y,
         birthYear: node.birthdate ? new Date(node.birthdate).getFullYear() : null,
         isAlive: !node.death_date,
         isClaimed: Boolean(node.claimed_by),

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MarkdownArticle } from '@/components/memories/MarkdownArticle';
+import { buildImageCropStyle, resolveImageCrop } from '@/utils/imageCrop';
 import { extractFirstMarkdownImage } from '@/utils/markdown';
 import {
   X,
@@ -101,6 +102,9 @@ export function CreateMemoryModal({
   const [tags, setTags] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [photoZoom, setPhotoZoom] = useState(1);
+  const [photoFocusX, setPhotoFocusX] = useState(50);
+  const [photoFocusY, setPhotoFocusY] = useState(50);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [subjectQuery, setSubjectQuery] = useState('');
   const [subjectUserIds, setSubjectUserIds] = useState<string[]>([]);
@@ -283,6 +287,9 @@ export function CreateMemoryModal({
     const f = e.target.files?.[0];
     if (!f) return;
     setFile(f);
+    setPhotoZoom(1);
+    setPhotoFocusX(50);
+    setPhotoFocusY(50);
     if (f.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (ev) => setPreview(ev.target?.result as string);
@@ -466,8 +473,16 @@ export function CreateMemoryModal({
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
+    const normalizedPhotoCrop = resolveImageCrop(
+      {
+        zoom: photoZoom,
+        focusX: photoFocusX,
+        focusY: photoFocusY,
+      },
+      { minZoom: 1, maxZoom: 3 }
+    );
 
-    const { error: insertError } = await supabase.rpc('create_memory_with_subjects', {
+    const createPayload = {
       _graph_id: graphId,
       _node_id: nodeId || null,
       _type: type,
@@ -479,7 +494,33 @@ export function CreateMemoryModal({
       _tags: parsedTags,
       _subject_user_ids: subjectUserIds,
       _subject_node_ids: subjectNodeIds,
-    });
+      _media_zoom: normalizedPhotoCrop.zoom,
+      _media_focus_x: normalizedPhotoCrop.focusX,
+      _media_focus_y: normalizedPhotoCrop.focusY,
+    };
+
+    let { error: insertError } = await supabase.rpc(
+      'create_memory_with_subjects',
+      createPayload
+    );
+
+    if (
+      insertError &&
+      /does not exist|unknown|unexpected|function/i.test(insertError.message || '')
+    ) {
+      const legacyPayload = {
+        ...createPayload,
+      };
+      delete (legacyPayload as Record<string, unknown>)._media_zoom;
+      delete (legacyPayload as Record<string, unknown>)._media_focus_x;
+      delete (legacyPayload as Record<string, unknown>)._media_focus_y;
+
+      const fallbackResult = await supabase.rpc(
+        'create_memory_with_subjects',
+        legacyPayload
+      );
+      insertError = fallbackResult.error;
+    }
 
     if (insertError) {
       setError('Failed to save: ' + insertError.message);
@@ -770,18 +811,78 @@ export function CreateMemoryModal({
                     className="hidden"
                   />
                   {preview ? (
-                    <div className="relative rounded-xl overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={preview}
-                        alt="Preview"
-                        className="w-full h-48 object-cover"
-                      />
+                    <div className="relative rounded-xl border border-stone/35 bg-stone/10 p-3 space-y-3">
+                      <div className="relative mx-auto w-full max-w-[260px] aspect-[4/5] rounded-xl overflow-hidden border border-stone/35 bg-white">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={preview}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                          style={buildImageCropStyle(
+                            {
+                              zoom: photoZoom,
+                              focusX: photoFocusX,
+                              focusY: photoFocusY,
+                            },
+                            { minZoom: 1, maxZoom: 3 }
+                          )}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2.5">
+                        <label className="text-xs text-bark/55 flex items-center justify-between gap-3">
+                          <span>Zoom</span>
+                          <span className="tabular-nums text-bark/45">
+                            {photoZoom.toFixed(2)}x
+                          </span>
+                          <input
+                            type="range"
+                            min={1}
+                            max={3}
+                            step={0.01}
+                            value={photoZoom}
+                            onChange={(event) => setPhotoZoom(Number(event.target.value))}
+                            className="flex-1 accent-moss"
+                          />
+                        </label>
+                        <label className="text-xs text-bark/55 flex items-center justify-between gap-3">
+                          <span>X</span>
+                          <span className="tabular-nums text-bark/45">
+                            {Math.round(photoFocusX)}%
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={photoFocusX}
+                            onChange={(event) => setPhotoFocusX(Number(event.target.value))}
+                            className="flex-1 accent-moss"
+                          />
+                        </label>
+                        <label className="text-xs text-bark/55 flex items-center justify-between gap-3">
+                          <span>Y</span>
+                          <span className="tabular-nums text-bark/45">
+                            {Math.round(photoFocusY)}%
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={photoFocusY}
+                            onChange={(event) => setPhotoFocusY(Number(event.target.value))}
+                            className="flex-1 accent-moss"
+                          />
+                        </label>
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
                           setFile(null);
                           setPreview(null);
+                          setPhotoZoom(1);
+                          setPhotoFocusX(50);
+                          setPhotoFocusY(50);
                         }}
                         className="absolute top-2 right-2 p-1.5 bg-black/40 rounded-full"
                       >
