@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion } from 'framer-motion';
 import { TreePine, Mail, Lock, Sparkles, UserPlus, LogIn } from 'lucide-react';
@@ -13,8 +13,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
-  const searchParams = useSearchParams();
   const supabase = createClient();
+  const nextParam =
+    typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('next');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +52,7 @@ export default function LoginPage() {
         return;
       }
 
-      const requestedNext = searchParams.get('next');
+      const requestedNext = nextParam;
       const safeNext =
         requestedNext &&
         requestedNext.startsWith('/') &&
@@ -73,7 +76,7 @@ export default function LoginPage() {
       }
     }
 
-    const requestedNext = searchParams.get('next');
+    const requestedNext = nextParam;
     const nextPath =
       requestedNext &&
       requestedNext.startsWith('/') &&
