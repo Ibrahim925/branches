@@ -1,9 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Heart, Lock, Plus, Users } from 'lucide-react';
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import {
   FAMILY_TREE_NODE_HEIGHT,
@@ -86,7 +85,10 @@ export function FamilyTreeCard({
   onSelect,
   onAddMember,
 }: FamilyTreeCardProps) {
+  const [failedAvatarSrc, setFailedAvatarSrc] = useState<string | null>(null);
   const initials = `${node.firstName?.[0] || ''}${node.lastName?.[0] || ''}`;
+  const shouldShowAvatar =
+    Boolean(node.avatarUrl) && failedAvatarSrc !== node.avatarUrl;
 
   return (
     <motion.div
@@ -133,13 +135,13 @@ export function FamilyTreeCard({
             node.isAlive ? 'border-leaf/80' : 'border-stone/80 grayscale'
           }`}
         >
-          {node.avatarUrl ? (
-            <Image
-              src={node.avatarUrl}
+          {shouldShowAvatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={node.avatarUrl || ''}
               alt={`${node.firstName} ${node.lastName}`}
-              width={80}
-              height={80}
               className="w-full h-full object-cover"
+              onError={() => setFailedAvatarSrc(node.avatarUrl || null)}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-moss to-leaf text-white font-semibold text-2xl">
