@@ -33,6 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [activeGraphName, setActiveGraphName] = useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -63,6 +64,32 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, [supabase]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadActiveGraphName() {
+      if (!graphId) {
+        setActiveGraphName(null);
+        return;
+      }
+
+      const { data } = await supabase
+        .from('graphs')
+        .select('name')
+        .eq('id', graphId)
+        .maybeSingle();
+
+      if (!active) return;
+      setActiveGraphName(data?.name?.trim() || 'Current Tree');
+    }
+
+    void loadActiveGraphName();
+
+    return () => {
+      active = false;
+    };
+  }, [graphId, supabase]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -130,6 +157,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-1">
+          {!isDashboard && graphId ? (
+            <div
+              className={`mb-3 rounded-xl border border-stone/40 bg-white/70 ${
+                collapsed ? 'p-2' : 'p-3'
+              }`}
+              title={activeGraphName || 'Current Tree'}
+            >
+              {collapsed ? (
+                <div className="w-9 h-9 rounded-lg bg-moss/12 text-moss text-sm font-semibold flex items-center justify-center mx-auto">
+                  {(activeGraphName || 'T').charAt(0).toUpperCase()}
+                </div>
+              ) : (
+                <>
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-bark/45">
+                    Current Tree
+                  </p>
+                  <p className="text-sm font-semibold text-earth truncate mt-1">
+                    {activeGraphName || 'Current Tree'}
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
+
           {/* Dashboard link */}
           <Link href="/dashboard">
             <div
@@ -227,7 +278,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="w-7 h-7 bg-gradient-to-br from-moss to-leaf rounded-lg flex items-center justify-center">
             <TreePine className="w-4 h-4 text-white" />
           </div>
-          <span className="text-sm font-semibold text-earth">Branches</span>
+          <div className="min-w-0">
+            <span className="text-sm font-semibold text-earth block leading-tight">Branches</span>
+            {!isDashboard && graphId ? (
+              <span className="text-[11px] text-bark/55 block truncate leading-tight mt-0.5">
+                {activeGraphName || 'Current Tree'}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <motion.div
