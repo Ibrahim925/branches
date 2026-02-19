@@ -93,9 +93,12 @@ function resolveClaimedName(profile: ClaimedProfileRow, fallback: RawNodeRecord)
 }
 
 function TreeView({ graphId }: { graphId: string }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trackedNodeIdsRef = useRef<Set<string>>(new Set());
+  const trackedEdgeIdsRef = useRef<Set<string>>(new Set());
   const didInitialCenterRef = useRef(false);
 
   const [rawNodes, setRawNodes] = useState<RawNodeRecord[]>([]);
@@ -122,6 +125,20 @@ function TreeView({ graphId }: { graphId: string }) {
     width: 0,
     height: 0,
   });
+
+  useEffect(() => {
+    trackedNodeIdsRef.current = new Set(rawNodes.map((node) => node.id));
+    trackedEdgeIdsRef.current = new Set(rawEdges.map((edge) => edge.id));
+  }, [rawEdges, rawNodes]);
+
+  const queueReload = useCallback(() => {
+    if (reloadTimeoutRef.current) return;
+
+    reloadTimeoutRef.current = setTimeout(() => {
+      reloadTimeoutRef.current = null;
+      setReloadNonce((value) => value + 1);
+    }, 80);
+  }, []);
 
   const clampZoom = useCallback(
     (value: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value)),
@@ -467,17 +484,45 @@ function TreeView({ graphId }: { graphId: string }) {
   }, [loadGraphData, reloadNonce]);
 
   useEffect(() => {
+    type RealtimePayload = {
+      eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+      new: { id?: string; graph_id?: string | null } | null;
+      old: { id?: string; graph_id?: string | null } | null;
+    };
+
+    const shouldReloadFromPayload = (
+      payload: RealtimePayload,
+      table: 'nodes' | 'edges'
+    ) => {
+      const nextGraphId = payload.new?.graph_id ?? null;
+      const previousGraphId = payload.old?.graph_id ?? null;
+
+      if (nextGraphId === graphId || previousGraphId === graphId) {
+        return true;
+      }
+
+      const changedRowId = payload.new?.id || payload.old?.id;
+      if (!changedRowId) return false;
+
+      return table === 'nodes'
+        ? trackedNodeIdsRef.current.has(changedRowId)
+        : trackedEdgeIdsRef.current.has(changedRowId);
+    };
+
     const channel = supabase
-      .channel(`graph:${graphId}`)
+      .channel(`graph:${graphId}:tree-live`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'nodes',
-          filter: `graph_id=eq.${graphId}`,
         },
-        () => setReloadNonce((value) => value + 1)
+        (payload) => {
+          if (shouldReloadFromPayload(payload as RealtimePayload, 'nodes')) {
+            queueReload();
+          }
+        }
       )
       .on(
         'postgres_changes',
@@ -485,9 +530,12 @@ function TreeView({ graphId }: { graphId: string }) {
           event: '*',
           schema: 'public',
           table: 'edges',
-          filter: `graph_id=eq.${graphId}`,
         },
-        () => setReloadNonce((value) => value + 1)
+        (payload) => {
+          if (shouldReloadFromPayload(payload as RealtimePayload, 'edges')) {
+            queueReload();
+          }
+        }
       )
       .subscribe();
 
@@ -497,8 +545,12 @@ function TreeView({ graphId }: { graphId: string }) {
       if (noticeTimeoutRef.current) {
         clearTimeout(noticeTimeoutRef.current);
       }
+      if (reloadTimeoutRef.current) {
+        clearTimeout(reloadTimeoutRef.current);
+        reloadTimeoutRef.current = null;
+      }
     };
-  }, [graphId, supabase]);
+  }, [graphId, queueReload, supabase]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
