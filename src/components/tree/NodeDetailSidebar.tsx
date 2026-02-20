@@ -633,13 +633,12 @@ export function NodeDetailSidebar({
       return;
     }
 
-    const { data: removedPendingInvites, error: removeError } = await supabase
+    const { error: removeError } = await supabase
       .from('invites')
       .delete()
       .eq('graph_id', graphId)
       .eq('node_id', node.id)
-      .eq('status', 'pending')
-      .select('id');
+      .eq('status', 'pending');
 
     if (removeError) {
       setActionError(removeError.message || 'Could not replace existing invite.');
@@ -674,24 +673,15 @@ export function NodeDetailSidebar({
 
     const inviteUrl = `${window.location.origin}/invite/${inviteRow.token}`;
     const copied = await nativeBridge.copyText(inviteUrl);
-    const replacedCount = removedPendingInvites?.length ?? 0;
 
     if (!copied) {
       setActionError('Invite created, but copying the link failed.');
-      setActionNotice(
-        replacedCount > 0
-          ? 'A new invite replaced the previous pending link.'
-          : 'A new invite link was created.'
-      );
+      setActionNotice('Invite link created.');
       setCreatingClaimInvite(false);
       return;
     }
 
-    setActionNotice(
-      replacedCount > 0
-        ? 'Invite link copied to clipboard. Previous pending invite replaced.'
-        : 'Invite link copied to clipboard.'
-    );
+    setActionNotice('Invite link copied to clipboard.');
     setCreatingClaimInvite(false);
   }
 
