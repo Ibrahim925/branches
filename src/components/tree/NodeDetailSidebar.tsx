@@ -23,6 +23,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { CreateMemoryModal } from '@/components/memories/CreateMemoryModal';
 import { BottomSheet } from '@/components/system/BottomSheet';
+import { nativeBridge } from '@/lib/native';
 import { formatDateOnly, getDateOnlyYear } from '@/utils/dateOnly';
 import { buildStoryExcerpt } from '@/utils/markdown';
 import { buildImageCropStyle } from '@/utils/imageCrop';
@@ -141,6 +142,7 @@ export function NodeDetailSidebar({
   const [loadingClaimStatus, setLoadingClaimStatus] = useState(true);
   const [claimingNode, setClaimingNode] = useState(false);
   const [unclaimingNode, setUnclaimingNode] = useState(false);
+  const [creatingClaimInvite, setCreatingClaimInvite] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(true);
   const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
     typeof window !== 'undefined'
@@ -608,6 +610,91 @@ export function NodeDetailSidebar({
     onUpdate?.();
   }
 
+  async function handleCreateClaimInvite() {
+    if (!node || creatingClaimInvite || node.claimed_by) return;
+
+    const canManageInvites = currentGraphRole === 'admin' || currentGraphRole === 'editor';
+    if (!canManageInvites) {
+      setActionError('Only admins or editors can create claim invites.');
+      return;
+    }
+
+    setCreatingClaimInvite(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setActionError('Sign in again to create invite links.');
+      setCreatingClaimInvite(false);
+      return;
+    }
+
+    const { data: removedPendingInvites, error: removeError } = await supabase
+      .from('invites')
+      .delete()
+      .eq('graph_id', graphId)
+      .eq('node_id', node.id)
+      .eq('status', 'pending')
+      .select('id');
+
+    if (removeError) {
+      setActionError(removeError.message || 'Could not replace existing invite.');
+      setCreatingClaimInvite(false);
+      return;
+    }
+
+    const { data: inviteRow, error: createError } = await supabase
+      .from('invites')
+      .insert({
+        graph_id: graphId,
+        invited_by: user.id,
+        email: null,
+        role: 'editor',
+        node_id: node.id,
+      })
+      .select('token')
+      .single();
+
+    if (createError) {
+      if (
+        createError.code === '23505' &&
+        createError.message.includes('idx_invites_unique_pending_claim_per_node')
+      ) {
+        setActionError('A claim invite is already pending for this family member. Try again.');
+      } else {
+        setActionError(createError.message || 'Could not create invite link.');
+      }
+      setCreatingClaimInvite(false);
+      return;
+    }
+
+    const inviteUrl = `${window.location.origin}/invite/${inviteRow.token}`;
+    const copied = await nativeBridge.copyText(inviteUrl);
+    const replacedCount = removedPendingInvites?.length ?? 0;
+
+    if (!copied) {
+      setActionError('Invite created, but copying the link failed.');
+      setActionNotice(
+        replacedCount > 0
+          ? 'A new invite replaced the previous pending link.'
+          : 'A new invite link was created.'
+      );
+      setCreatingClaimInvite(false);
+      return;
+    }
+
+    setActionNotice(
+      replacedCount > 0
+        ? 'Invite link copied to clipboard. Previous pending invite replaced.'
+        : 'Invite link copied to clipboard.'
+    );
+    setCreatingClaimInvite(false);
+  }
+
   async function handleLinkExisting(
     targetNodeId: string,
     relationship: ExistingRelationshipKind
@@ -825,6 +912,10 @@ export function NodeDetailSidebar({
   const canDeleteNodeFromTree =
     currentGraphRole === 'admin' ||
     (currentGraphRole === 'editor' && node?.created_by === currentUserId);
+  const canManageNodeInvites =
+    Boolean(node) &&
+    !node?.claimed_by &&
+    (currentGraphRole === 'admin' || currentGraphRole === 'editor');
   const canClaimThisNode =
     Boolean(node) &&
     !node?.claimed_by &&
@@ -1262,6 +1353,22 @@ export function NodeDetailSidebar({
                   Edit Details
                 </button>
               )}
+
+              {canManageNodeInvites ? (
+                <button
+                  type="button"
+                  onClick={() => void handleCreateClaimInvite()}
+                  disabled={creatingClaimInvite}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-moss/35 text-earth text-sm hover:bg-moss/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {creatingClaimInvite ? (
+                    <Loader2 className="w-4 h-4 text-moss animate-spin" />
+                  ) : (
+                    <UserPlus className="w-4 h-4 text-moss" />
+                  )}
+                  {creatingClaimInvite ? 'Creating Invite…' : 'Create Claim Invite'}
+                </button>
+              ) : null}
 
               {canClaimThisNode && (
                 <button
