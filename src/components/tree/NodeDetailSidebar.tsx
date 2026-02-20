@@ -1402,15 +1402,6 @@ export function NodeDetailSidebar({
                 </button>
               ) : null}
 
-              {!node.claimed_by &&
-              !loadingClaimStatus &&
-              Boolean(currentUserId) &&
-              hasClaimedNodeInGraph ? (
-                <p className="px-1 text-xs text-bark/55">
-                  You already have a claimed profile in this tree.
-                </p>
-              ) : null}
-
               {canLinkExistingRelationships ? (
                 <>
                   <button
